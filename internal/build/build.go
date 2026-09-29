@@ -11,7 +11,7 @@ import (
 )
 
 // ErrUnsupported é devolvido fora do Linux: o buildah precisa do kernel Linux.
-var ErrUnsupported = errors.New("build e push só funcionam em Linux; no Windows ou macOS rode a imagem do forja com Docker (veja o capítulo 14)")
+var ErrUnsupported = errors.New("build e push só funcionam em Linux; no Windows ou macOS rode a imagem do forja com Docker (veja 'Rodando no Windows' no Manual da Forja)")
 
 // Options descreve um build.
 type Options struct {

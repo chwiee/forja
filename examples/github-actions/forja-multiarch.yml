@@ -9,7 +9,7 @@ permissions:
   packages: write
 env:
   IMAGE: ghcr.io/${{ github.repository }}
-  # permissões mínimas do forja (capítulo 13 do livro) + credenciais do docker login
+  # permissões mínimas do forja (Manual da Forja: "Permissões mínimas") + credenciais do docker login
   FORJA_OPTS: >-
     --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER
     --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE --cap-add SETFCAP

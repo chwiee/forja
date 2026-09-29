@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Roda o forja num container com as permissões mínimas (capítulo 13 do livro).
+# Roda o forja num container com as permissões mínimas (Manual da Forja: "Permissões mínimas").
 # A pasta atual vira /workspace; as credenciais do "docker login" são reusadas.
 #
 #   ci/forja.sh run -t ghcr.io/org/app:1.0 .

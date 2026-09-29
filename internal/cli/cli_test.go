@@ -104,6 +104,7 @@ func TestManifest(t *testing.T) {
 // run executa o CLI como se fosse o terminal e devolve saída + exit code.
 func run(t *testing.T, reg *fakeRegistry, eng *fakeEngine, args ...string) (string, int) {
 	t.Helper()
+	hostOS = "linux" // o scan real recusa Windows; aqui o scanner é falso
 	cmd := NewRootCmd(Deps{
 		NewClient: func(registry.Config) registry.Client { return reg },
 		Engine:    eng,
@@ -261,5 +262,25 @@ func TestRunStopsAtGate(t *testing.T) {
 	_, code = run(t, &fakeRegistry{digests: map[string]string{"reg/app:1": "sha256:x"}}, exists, "run", "-t", "reg/app:1", "--immutable")
 	if code != ExitNotFound || exists.gotBuild.Image != "" {
 		t.Errorf("tag existente: exit = %d, buildou = %q; queria exit 2 sem build", code, exists.gotBuild.Image)
+	}
+}
+
+func TestScanRefusesNativeWindows(t *testing.T) {
+	cmd := NewRootCmd(Deps{
+		NewClient: func(registry.Config) registry.Client { return &fakeRegistry{} },
+		Engine:    &fakeEngine{},
+		Scanner: func(context.Context, scan.Target, scan.Options) (*scan.Report, error) {
+			t.Fatal("não deveria escanear no Windows")
+			return nil, nil
+		},
+	})
+	hostOS = "windows"
+	defer func() { hostOS = "linux" }()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"scan", "--remote", "reg/app:1"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "Windows nativo") {
+		t.Errorf("queria recusa clara no Windows, veio %v", err)
 	}
 }

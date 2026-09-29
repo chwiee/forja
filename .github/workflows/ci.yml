@@ -19,8 +19,9 @@ permissions:
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}          # a imagem do forja
-  E2E: ghcr.io/${{ github.repository }}-e2e        # imagens de teste que o forja gera
+  E2E: ghcr.io/${{ github.repository }}            # imagens de teste: mesmo pacote, tags e2e-*
   TAG: sha-${{ github.sha }}
+  E2E_TAG: e2e-${{ github.sha }}
   FORJA_IMAGE: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
 
 jobs:
@@ -76,26 +77,26 @@ jobs:
         run: ci/cosign.sh verify --key cosign.pub --insecure-ignore-tlog "$FORJA_IMAGE" > /dev/null
 
       - name: "build (com RUN) + scan + push: aprovada e publicada"
-        run: ci/forja.sh run -t "$E2E:$TAG-${{ matrix.arch }}" testdata/multi
+        run: ci/forja.sh run -t "$E2E:$E2E_TAG-${{ matrix.arch }}" testdata/multi
 
       - name: "a imagem publicada roda nesta arquitetura (RUN nativo)"
-        run: docker run --rm "$E2E:$TAG-${{ matrix.arch }}" | tee /dev/stderr | grep -q "buildado em $(uname -m)"
+        run: docker run --rm "$E2E:$E2E_TAG-${{ matrix.arch }}" | tee /dev/stderr | grep -q "buildado em $(uname -m)"
 
       - name: "isca com secret: reprovada (exit 3) e NADA publicado"
         run: |
           TOKEN="ghp_$(head -c 300 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 36)"
           set +e
-          ci/forja.sh run -t "$E2E:$TAG-secret-${{ matrix.arch }}" --build-arg "API_TOKEN=$TOKEN" \
+          ci/forja.sh run -t "$E2E:$E2E_TAG-secret-${{ matrix.arch }}" --build-arg "API_TOKEN=$TOKEN" \
             --sarif secret.sarif testdata/iscas/secret > saida.txt; code=$?
           set -e
           cat saida.txt
           test "$code" -eq 3
           if grep -q "$TOKEN" saida.txt; then echo "o token vazou no log"; exit 1; fi
-          set +e; ci/forja.sh exists "$E2E:$TAG-secret-${{ matrix.arch }}"; test $? -eq 2
+          set +e; ci/forja.sh exists "$E2E:$E2E_TAG-secret-${{ matrix.arch }}"; test $? -eq 2
 
       - name: "isca com CVEs: reprovada (exit 3)"
         run: |
-          set +e; ci/forja.sh run -t "$E2E:$TAG-cve-${{ matrix.arch }}" testdata/iscas/cve; test $? -eq 3
+          set +e; ci/forja.sh run -t "$E2E:$E2E_TAG-cve-${{ matrix.arch }}" testdata/iscas/cve; test $? -eq 3
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -111,10 +112,10 @@ jobs:
       - name: login no GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: juntar amd64 + arm64 num manifest list
-        run: ci/forja.sh manifest "$E2E:$TAG" "$E2E:$TAG-amd64" "$E2E:$TAG-arm64"
+        run: ci/forja.sh manifest "$E2E:$E2E_TAG" "$E2E:$E2E_TAG-amd64" "$E2E:$E2E_TAG-arm64"
       - name: conferir as duas arquiteturas
         run: |
-          docker buildx imagetools inspect "$E2E:$TAG" | tee inspect.txt
+          docker buildx imagetools inspect "$E2E:$E2E_TAG" | tee inspect.txt
           grep -q "linux/amd64" inspect.txt && grep -q "linux/arm64" inspect.txt
 
   k8s:
@@ -133,8 +134,13 @@ jobs:
         run: |
           sed "s|FORJA_IMAGE|$FORJA_IMAGE|" ci/k8s-e2e.yaml | kubectl apply -f -
           kubectl wait --for=condition=Available deploy/registry --timeout=120s
-          if ! kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/forja-build --timeout=15m; then
-            kubectl describe pod/forja-build; kubectl logs pod/forja-build --all-containers; exit 1
-          fi
+          # espera o pod TERMINAR (sucesso ou falha), no máximo 15 min
+          for i in $(seq 1 90); do
+            phase=$(kubectl get pod/forja-build -o jsonpath='{.status.phase}')
+            case "$phase" in Succeeded|Failed) break ;; esac
+            sleep 10
+          done
+          echo "fase do pod: $phase"
           kubectl logs pod/forja-build | tee pod.txt
+          if [ "$phase" != "Succeeded" ]; then kubectl describe pod/forja-build; exit 1; fi
           grep -q "PUSH OK" pod.txt

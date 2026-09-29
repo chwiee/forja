@@ -1,7 +1,7 @@
 # Pod que builda e publica uma imagem com o forja, num nó de UMA arquitetura.
 # Para multi-arch no EKS: um pod destes por arquitetura (troque nodeSelector e
-# o sufixo da tag) e depois um "forja manifest" juntando as duas (capítulo 15).
-# Permissões descobertas no laboratório (capítulo 13); hostUsers exige K8s 1.33+.
+# o sufixo da tag) e depois um "forja manifest" juntando as duas (Manual da Forja: "Multi-arquitetura e nós mistos no EKS").
+# Permissões descobertas no laboratório (Manual da Forja: "Permissões mínimas"); hostUsers exige K8s 1.33+.
 apiVersion: v1
 kind: Pod
 metadata:

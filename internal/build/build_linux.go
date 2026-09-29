@@ -21,6 +21,7 @@ import (
 	"go.podman.io/image/v5/oci/layout"
 	"go.podman.io/image/v5/types"
 	"go.podman.io/storage"
+	"golang.org/x/sys/unix"
 )
 
 // InitReexec precisa ser a primeira coisa do main: o buildah re-executa o
@@ -80,9 +81,13 @@ func (Buildah) Build(ctx context.Context, o Options) (string, error) {
 		Isolation: define.IsolationChroot,
 		// RUN usa a rede do container do forja. Sem isso, o buildah procura o
 		// netavark para criar uma rede isolada, e ele não existe no distroless.
-		NamespaceOptions:    []define.NamespaceOption{{Name: string(specs.NetworkNamespace), Host: true}},
-		ConfigureNetwork:    define.NetworkEnabled,
-		NetworkInterface:    hostNetwork{},
+		NamespaceOptions: []define.NamespaceOption{{Name: string(specs.NetworkNamespace), Host: true}},
+		ConfigureNetwork: define.NetworkEnabled,
+		NetworkInterface: hostNetwork{},
+		// Sem isto, o buildah dá a cada RUN nofile/nproc = 1048576, e subir
+		// o limite acima do teto atual exige CAP_SYS_RESOURCE. Os runners do
+		// GitHub têm teto de 65536: o RUN falhava com "operation not permitted".
+		CommonBuildOpts:     &define.CommonBuildOptions{Ulimit: currentUlimits()},
 		PullPolicy:          define.PullIfMissing,
 		OutputFormat:        define.OCIv1ImageManifest,
 		SystemContext:       sys,
@@ -266,4 +271,18 @@ func exportOne(ctx context.Context, store storage.Store, sys *types.SystemContex
 		return fmt.Errorf("exportando %s para %s: %w", image, dir, err)
 	}
 	return nil
+}
+
+// currentUlimits devolve os tetos atuais do processo para nofile e nproc,
+// no formato do buildah ("nofile=65536:65536"). Usar o teto atual nunca
+// exige privilégio extra; um valor maior exigiria CAP_SYS_RESOURCE.
+func currentUlimits() []string {
+	var out []string
+	for name, res := range map[string]int{"nofile": unix.RLIMIT_NOFILE, "nproc": unix.RLIMIT_NPROC} {
+		var r unix.Rlimit
+		if err := unix.Getrlimit(res, &r); err == nil && r.Max != unix.RLIM_INFINITY {
+			out = append(out, fmt.Sprintf("%s=%d:%d", name, r.Max, r.Max))
+		}
+	}
+	return out
 }

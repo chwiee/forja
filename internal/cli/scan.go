@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,9 @@ import (
 	"github.com/chwiee/forja/internal/build"
 	"github.com/chwiee/forja/internal/scan"
 )
+
+// hostOS existe para o teste simular Linux quando roda no Windows.
+var hostOS = runtime.GOOS
 
 // Scanner é o contrato do scan. O main passa scan.Scan; o teste, um fake.
 type Scanner func(ctx context.Context, t scan.Target, o scan.Options) (*scan.Report, error)
@@ -76,6 +80,11 @@ Exit codes: 0 aprovada | 3 reprovada no gate | 1 erro`,
 
 // runScan é usado por scan e por run.
 func runScan(ctx context.Context, cmd *cobra.Command, opts *options, sf scanFlags, image string, remote bool) error {
+	// Testado: no Windows nativo, a biblioteca de camadas do Syft grava arquivos
+	// com ":" no nome (0-sha256:...), que o Windows recusa. Melhor avisar já.
+	if hostOS == "windows" {
+		return errors.New("scan não funciona no Windows nativo (a biblioteca do Syft usa nomes de arquivo inválidos no Windows); rode a imagem do forja com Docker")
+	}
 	policy, err := scan.LoadPolicy(sf.policy)
 	if err != nil {
 		return err
