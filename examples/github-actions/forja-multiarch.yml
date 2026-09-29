@@ -1,0 +1,44 @@
+# Multi-arch nativo: cada arquitetura builda no próprio runner (sem emulação)
+# e um job final junta tudo num manifest list com "forja manifest".
+name: imagem-multiarch
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  packages: write
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  FORJA: ghcr.io/chwiee/forja:0.2.0   # a imagem do forja é multi-arch: o runner puxa a certa
+  CAPS: >-
+    --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE
+    --cap-add FOWNER --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE
+    --cap-add SETFCAP --cap-add SETGID --cap-add SETPCAP --cap-add SETUID --cap-add SYS_CHROOT
+    --security-opt apparmor=unconfined
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@<SHA-do-commit-da-v5>
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: build nativo ${{ matrix.arch }}
+        run: |
+          docker run --rm $CAPS -v "$PWD:/workspace" -v forja-tmp:/var/tmp \
+            -v "$HOME/.docker/config.json:/auth/config.json:ro" -e REGISTRY_AUTH_FILE=/auth/config.json \
+            $FORJA build -t "$IMAGE:${{ github.ref_name }}-${{ matrix.arch }}" --push .
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: juntar num manifest list
+        run: |
+          T="${{ github.ref_name }}"
+          docker run --rm -v forja-tmp:/var/tmp \
+            -v "$HOME/.docker/config.json:/auth/config.json:ro" -e REGISTRY_AUTH_FILE=/auth/config.json \
+            $FORJA manifest "$IMAGE:$T" "$IMAGE:$T-amd64" "$IMAGE:$T-arm64"

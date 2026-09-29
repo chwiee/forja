@@ -1,0 +1,49 @@
+# Pod que builda e publica uma imagem com o forja, num nó de UMA arquitetura.
+# Para multi-arch no EKS: um pod destes por arquitetura (troque nodeSelector e
+# o sufixo da tag) e depois um "forja manifest" juntando as duas (capítulo 15).
+# Permissões descobertas no laboratório (capítulo 13); hostUsers exige K8s 1.33+.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: forja-build-arm64
+spec:
+  hostUsers: false          # user namespace: root no container, usuário comum no nó
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/arch: arm64
+  initContainers:
+    - name: clone           # traz o código (com o Dockerfile) para /workspace
+      image: docker.io/alpine/git:latest
+      args: ["clone", "--depth", "1", "https://github.com/chwiee/app.git", "/workspace"]
+      volumeMounts: [{ name: workspace, mountPath: /workspace }]
+  containers:
+    - name: forja
+      image: ghcr.io/chwiee/forja:0.2.0   # multi-arch: o nó puxa a variante dele
+      args: ["build", "-t", "registry.interno/app:1.0-arm64", "--push", "/workspace"]
+      env:
+        - { name: STORAGE_DRIVER, value: overlay }
+        - { name: REGISTRY_AUTH_FILE, value: /auth/config.json }
+      securityContext:
+        runAsUser: 0
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["SYS_ADMIN", "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL",
+                "NET_BIND_SERVICE", "SETFCAP", "SETGID", "SETPCAP", "SETUID", "SYS_CHROOT"]
+        seccompProfile: { type: RuntimeDefault }
+        appArmorProfile: { type: Unconfined }   # o perfil padrão bloqueia mount
+      volumeMounts:
+        - { name: workspace, mountPath: /workspace }
+        - { name: tmp,       mountPath: /var/tmp }
+        - { name: storage,   mountPath: /var/lib/containers }
+        - { name: run,       mountPath: /run }
+        - { name: cache,     mountPath: /var/cache/containers }
+        - { name: auth,      mountPath: /auth, readOnly: true }
+  volumes:
+    - { name: workspace, emptyDir: {} }
+    - { name: tmp,       emptyDir: {} }
+    - { name: storage,   emptyDir: {} }
+    - { name: run,       emptyDir: { medium: Memory } }
+    - { name: cache,     emptyDir: {} }
+    - name: auth
+      secret: { secretName: registry-auth, items: [{ key: .dockerconfigjson, path: config.json }] }

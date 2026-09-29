@@ -1,0 +1,27 @@
+# Runner hospedado pelo GitHub (ubuntu-24.04), sem ARC: o forja roda via docker run.
+name: imagem
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build-push:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@<SHA-do-commit-da-v5>   # fixe por SHA, nunca por tag
+      - name: login no GHCR (grava ~/.docker/config.json)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: build e push com o forja
+        run: |
+          docker run --rm \
+            --cap-drop ALL \
+            --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+            --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE --cap-add SETFCAP \
+            --cap-add SETGID --cap-add SETPCAP --cap-add SETUID --cap-add SYS_CHROOT \
+            --security-opt apparmor=unconfined \
+            -v "$PWD:/workspace" -v forja-tmp:/var/tmp \
+            -v "$HOME/.docker/config.json:/auth/config.json:ro" -e REGISTRY_AUTH_FILE=/auth/config.json \
+            ghcr.io/chwiee/forja:0.2.0 \
+            build -t "ghcr.io/${{ github.repository }}:${{ github.ref_name }}" --push .

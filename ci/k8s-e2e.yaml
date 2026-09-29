@@ -1,0 +1,68 @@
+# Teste do forja num pod do Kubernetes (rodado no kind pelo CI).
+# O pod usa EXATAMENTE o securityContext e os volumes de deploy/k8s-pod.yaml;
+# só o /workspace muda: aqui vem de um ConfigMap em vez de um git clone.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: registry }
+spec:
+  selector: { matchLabels: { app: registry } }
+  template:
+    metadata: { labels: { app: registry } }
+    spec:
+      containers:
+        - name: registry
+          image: docker.io/library/registry:3
+          ports: [{ containerPort: 5000 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: registry }
+spec:
+  selector: { app: registry }
+  ports: [{ port: 5000, targetPort: 5000 }]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: app }
+data:
+  Dockerfile: |
+    FROM docker.io/library/alpine:3.22
+    RUN apk add --no-cache file && echo "buildado em $(uname -m)" > /build-arch.txt
+    RUN adduser -D app
+    USER app
+    CMD ["cat", "/build-arch.txt"]
+---
+apiVersion: v1
+kind: Pod
+metadata: { name: forja-build }
+spec:
+  hostUsers: false          # user namespace: root no container, usuário comum no nó
+  restartPolicy: Never
+  containers:
+    - name: forja
+      image: FORJA_IMAGE
+      imagePullPolicy: IfNotPresent
+      args: ["run", "-t", "registry.default.svc.cluster.local:5000/app:1.0", "--tls-verify=false", "/workspace"]
+      env:
+        - { name: STORAGE_DRIVER, value: overlay }
+      securityContext:
+        runAsUser: 0
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["SYS_ADMIN", "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "KILL",
+                "NET_BIND_SERVICE", "SETFCAP", "SETGID", "SETPCAP", "SETUID", "SYS_CHROOT"]
+        seccompProfile: { type: RuntimeDefault }
+        appArmorProfile: { type: Unconfined }
+      volumeMounts:
+        - { name: workspace, mountPath: /workspace }
+        - { name: tmp,       mountPath: /var/tmp }
+        - { name: storage,   mountPath: /var/lib/containers }
+        - { name: run,       mountPath: /run }
+        - { name: cache,     mountPath: /var/cache/containers }
+  volumes:
+    - { name: workspace, configMap: { name: app } }
+    - { name: tmp,       emptyDir: {} }
+    - { name: storage,   emptyDir: {} }
+    - { name: run,       emptyDir: { medium: Memory } }
+    - { name: cache,     emptyDir: {} }

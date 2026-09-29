@@ -1,0 +1,5 @@
+bin/
+*.exe
+*.sarif
+*.test
+.fake-token-suffix

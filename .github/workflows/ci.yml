@@ -1,0 +1,132 @@
+# CI do forja. Cada etapa só roda se a anterior passou:
+#
+#   1. test      testes, vet e CVEs do próprio código Go
+#   2. image     imagem multi-arch do forja no GHCR
+#   3. e2e       o forja de verdade, em amd64 e arm64 NATIVOS, com as imagens-isca
+#   4. manifest  junta as imagens das duas arquiteturas num nome só
+#   5. k8s       o forja num pod do Kubernetes (kind) com as permissões mínimas
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}          # a imagem do forja
+  E2E: ghcr.io/${{ github.repository }}-e2e        # imagens de teste que o forja gera
+  TAG: sha-${{ github.sha }}
+  FORJA_IMAGE: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: vet
+        run: go vet -tags containers_image_openpgp ./...
+      - name: testes
+        run: go test -tags containers_image_openpgp ./...
+      - name: CVEs no código do forja
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -tags "containers_image_openpgp exclude_graphdriver_btrfs" ./...
+
+  image:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: build e push multi-arch (amd64 + arm64)
+        run: |
+          TAGS="-t $IMAGE:$TAG"
+          case "$GITHUB_REF" in refs/tags/v*) TAGS="$TAGS -t $IMAGE:${GITHUB_REF_NAME#v} -t $IMAGE:latest" ;; esac
+          docker buildx create --use
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION="$GITHUB_REF_NAME" $TAGS --push .
+
+  e2e:
+    needs: image
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: "build (com RUN) + scan + push: aprovada e publicada"
+        run: ci/forja.sh run -t "$E2E:$TAG-${{ matrix.arch }}" testdata/multi
+
+      - name: "a imagem publicada roda nesta arquitetura (RUN nativo)"
+        run: docker run --rm "$E2E:$TAG-${{ matrix.arch }}" | tee /dev/stderr | grep -q "buildado em $(uname -m)"
+
+      - name: "isca com secret: reprovada (exit 3) e NADA publicado"
+        run: |
+          TOKEN="ghp_$(head -c 300 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 36)"
+          set +e
+          ci/forja.sh run -t "$E2E:$TAG-secret-${{ matrix.arch }}" --build-arg "API_TOKEN=$TOKEN" \
+            --sarif secret.sarif testdata/iscas/secret > saida.txt; code=$?
+          set -e
+          cat saida.txt
+          test "$code" -eq 3
+          if grep -q "$TOKEN" saida.txt; then echo "o token vazou no log"; exit 1; fi
+          set +e; ci/forja.sh exists "$E2E:$TAG-secret-${{ matrix.arch }}"; test $? -eq 2
+
+      - name: "isca com CVEs: reprovada (exit 3)"
+        run: |
+          set +e; ci/forja.sh run -t "$E2E:$TAG-cve-${{ matrix.arch }}" testdata/iscas/cve; test $? -eq 3
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: sarif-${{ matrix.arch }}
+          path: "*.sarif"
+
+  manifest:
+    needs: e2e
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: juntar amd64 + arm64 num manifest list
+        run: ci/forja.sh manifest "$E2E:$TAG" "$E2E:$TAG-amd64" "$E2E:$TAG-arm64"
+      - name: conferir as duas arquiteturas
+        run: |
+          docker buildx imagetools inspect "$E2E:$TAG" | tee inspect.txt
+          grep -q "linux/amd64" inspect.txt && grep -q "linux/arm64" inspect.txt
+
+  k8s:
+    needs: image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: cluster kind
+        run: |
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64 && chmod +x kind
+          ./kind create cluster --image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed --wait 120s
+          docker pull "$FORJA_IMAGE" && ./kind load docker-image "$FORJA_IMAGE"
+      - name: pod do forja builda, escaneia e publica num registry do cluster
+        run: |
+          sed "s|FORJA_IMAGE|$FORJA_IMAGE|" ci/k8s-e2e.yaml | kubectl apply -f -
+          kubectl wait --for=condition=Available deploy/registry --timeout=120s
+          if ! kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/forja-build --timeout=15m; then
+            kubectl describe pod/forja-build; kubectl logs pod/forja-build --all-containers; exit 1
+          fi
+          kubectl logs pod/forja-build | tee pod.txt
+          grep -q "PUSH OK" pod.txt
