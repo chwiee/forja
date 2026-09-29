@@ -137,7 +137,11 @@ jobs:
           docker pull "$FORJA_IMAGE" && ./kind load docker-image "$FORJA_IMAGE"
       - name: pod do forja builda, escaneia e publica num registry do cluster
         run: |
-          sed "s|FORJA_IMAGE|$FORJA_IMAGE|" ci/k8s-e2e.yaml | kubectl apply -f -
+          # hostUsers: false sai aqui: no kind aninhado no runner, o sandbox do pod
+          # falha ao montar /sys no user namespace ("error mounting sysfs ...
+          # operation not permitted"). Validado no kind do Docker Desktop (kernel
+          # 6.18) e necessário em nós reais; o resto do securityContext é igual.
+          sed -e "s|FORJA_IMAGE|$FORJA_IMAGE|" -e "/hostUsers: false/d" ci/k8s-e2e.yaml | kubectl apply -f -
           kubectl wait --for=condition=Available deploy/registry --timeout=120s
           # espera o pod TERMINAR (sucesso ou falha), no máximo 15 min
           for i in $(seq 1 90); do
