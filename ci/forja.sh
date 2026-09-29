@@ -4,6 +4,7 @@
 #
 #   ci/forja.sh run -t ghcr.io/org/app:1.0 .
 #   FORJA_IMAGE=ghcr.io/chwiee/forja:0.3.0 ci/forja.sh scan --remote ghcr.io/org/app:1.0
+#   FORJA_DOCKER_OPTS="-e AWS_REGION=us-east-1" ci/forja.sh run --registry ecr --name org/app -t v1 .
 set -eu
 
 AUTH="$HOME/.docker/config.json"
@@ -22,4 +23,7 @@ exec docker run --rm \
   -v "$AUTH:/auth/config.json:ro" \
   -e REGISTRY_AUTH_FILE=/auth/config.json \
   -e DOCKER_CONFIG=/auth \
+  -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+  -e AWS_ENDPOINT_URL -e FORJA_ECR_ACCOUNT -e FORJA_ECR_REGION -e FORJA_ECR_HOST \
+  ${FORJA_DOCKER_OPTS:-} \
   "${FORJA_IMAGE:-ghcr.io/chwiee/forja:latest}" "$@"

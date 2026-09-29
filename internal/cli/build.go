@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 type buildFlags struct {
 	file      string
 	tag       string
+	name      string
 	buildArgs []string
 	platforms []string
 }
@@ -23,14 +25,19 @@ type buildFlags struct {
 func (b *buildFlags) register(cmd *cobra.Command) {
 	f := cmd.Flags()
 	f.StringVarP(&b.file, "file", "f", "Dockerfile", "caminho do Dockerfile (relativo ao contexto)")
-	f.StringVarP(&b.tag, "tag", "t", "", "nome da imagem: registry/repo:tag")
+	f.StringVarP(&b.tag, "tag", "t", "", "imagem completa (registry/repo:tag) ou, com --registry, só a tag")
+	f.StringVar(&b.name, "name", "", "repositório no registry (ex.: ${{ github.repository }}); exige --registry")
 	f.StringArrayVar(&b.buildArgs, "build-arg", nil, "variável de build CHAVE=VALOR (pode repetir)")
 	f.StringSliceVar(&b.platforms, "platform", nil, "plataformas, ex.: linux/amd64,linux/arm64 (gera um manifest list)")
 	_ = cmd.MarkFlagRequired("tag")
 }
 
-// options valida as flags e monta o build.Options.
-func (b *buildFlags) options(args []string, opts *options, log io.Writer) (build.Options, error) {
+// options valida as flags, resolve a imagem (e a credencial) e monta o build.Options.
+func (b *buildFlags) options(ctx context.Context, args []string, opts *options, log io.Writer) (build.Options, error) {
+	image, err := opts.resolve(ctx, b.name, b.tag)
+	if err != nil {
+		return build.Options{}, err
+	}
 	contextDir := "."
 	if len(args) == 1 {
 		contextDir = args[0]
@@ -51,7 +58,7 @@ func (b *buildFlags) options(args []string, opts *options, log io.Writer) (build
 	return build.Options{
 		Containerfile: file,
 		ContextDir:    contextDir,
-		Image:         b.tag,
+		Image:         image,
 		BuildArgs:     parsedArgs,
 		Platforms:     parsedPlatforms,
 		StorageDriver: opts.storageDriver,
@@ -70,25 +77,26 @@ func newBuildCmd(opts *options) *cobra.Command {
 		Short: "Builda uma imagem a partir de um Dockerfile (CONTEXTO padrão: .)",
 		Example: `  forja build -t registry.local/app:1.0 .
   forja build -f docker/Dockerfile -t ghcr.io/org/app:1.0 --build-arg VERSION=1.0 --push .
-  forja build --platform linux/amd64,linux/arm64 -t ghcr.io/org/app:1.0 --push .`,
+  forja build --platform linux/amd64,linux/arm64 -t ghcr.io/org/app:1.0 --push .
+  forja build --registry ecr --name ${{ github.repository }} -t ${{ github.ref }} --push .`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log := cmd.ErrOrStderr() // logs do build no stderr; o resultado no stdout
-			o, err := bf.options(args, opts, log)
+			ctx, cancel := opts.ctx(cmd)
+			defer cancel()
+			o, err := bf.options(ctx, args, opts, log)
 			if err != nil {
 				return err
 			}
-			ctx, cancel := opts.ctx(cmd)
-			defer cancel()
 
 			id, err := opts.deps.Engine.Build(ctx, o)
 			if err != nil {
 				return err
 			}
-			result := map[string]string{"image": bf.tag, "id": id}
+			result := map[string]string{"image": o.Image, "id": id}
 			if push {
 				digest, err := opts.deps.Engine.Push(ctx, build.PushOptions{
-					Image: bf.tag, StorageDriver: opts.storageDriver, TLSVerify: opts.tlsVerify, Out: log,
+					Image: o.Image, StorageDriver: opts.storageDriver, TLSVerify: opts.tlsVerify, Out: log,
 				})
 				if err != nil {
 					return err
@@ -100,9 +108,9 @@ func newBuildCmd(opts *options) *cobra.Command {
 			if opts.output == "json" {
 				return json.NewEncoder(out).Encode(result)
 			}
-			fmt.Fprintf(out, "BUILD OK  %s  id=%s\n", bf.tag, short(id))
+			fmt.Fprintf(out, "BUILD OK  %s  id=%s\n", o.Image, short(id))
 			if push {
-				fmt.Fprintf(out, "PUSH OK   %s  %s\n", bf.tag, result["digest"])
+				fmt.Fprintf(out, "PUSH OK   %s  %s\n", o.Image, result["digest"])
 			}
 			return nil
 		},

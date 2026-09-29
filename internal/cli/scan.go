@@ -52,9 +52,10 @@ func newScanCmd(opts *options) *cobra.Command {
 	var (
 		sf     scanFlags
 		remote bool
+		img    imageArg
 	)
 	cmd := &cobra.Command{
-		Use:   "scan IMAGEM",
+		Use:   "scan [IMAGEM]",
 		Short: "Procura CVEs, secrets e configuração insegura e dá uma nota (exit 3 se reprovar)",
 		Long: `Escaneia uma imagem e calcula uma nota de 0 a 100 segundo a política.
 
@@ -66,13 +67,18 @@ escaneada separadamente e todas precisam passar.
 Exit codes: 0 aprovada | 3 reprovada no gate | 1 erro`,
 		Example: `  forja scan registry.local/app:1.0
   forja scan --remote --policy forja-policy.yaml --sarif forja.sarif ghcr.io/org/app:1.0`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := opts.ctx(cmd)
 			defer cancel()
-			return runScan(ctx, cmd, opts, sf, args[0], remote)
+			image, err := opts.imageFromArgs(ctx, args, img)
+			if err != nil {
+				return err
+			}
+			return runScan(ctx, cmd, opts, sf, image, remote)
 		},
 	}
+	img.register(cmd, true)
 	sf.register(cmd)
 	cmd.Flags().BoolVar(&remote, "remote", false, "escaneia direto do registry, sem storage local")
 	return cmd

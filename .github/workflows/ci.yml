@@ -5,6 +5,7 @@
 #   3. e2e       o forja de verdade, em amd64 e arm64 NATIVOS, com as imagens-isca
 #   4. manifest  junta as imagens das duas arquiteturas num nome só
 #   5. k8s       o forja num pod do Kubernetes (kind) com as permissões mínimas
+#   6. ecr       --registry ecr contra o ECR emulado pelo floci (SDK da AWS)
 name: ci
 
 on:
@@ -81,8 +82,20 @@ jobs:
       - name: "a imagem do forja é a que o CI assinou"
         run: ci/cosign.sh verify --key cosign.pub --insecure-ignore-tlog "$FORJA_IMAGE" > /dev/null
 
-      - name: "build (com RUN) + scan + push: aprovada e publicada"
-        run: ci/forja.sh run -t "$E2E:$E2E_TAG-${{ matrix.arch }}" testdata/multi
+      - name: "build (com RUN) + scan + push: aprovada e publicada (--registry ghcr)"
+        run: |
+          ci/forja.sh run --registry ghcr --name "${{ github.repository }}" \
+            --tag "$E2E_TAG-${{ matrix.arch }}" --immutable testdata/multi
+
+      - name: "--immutable: a mesma tag de novo é recusada (exit 2) antes do build"
+        run: |
+          set +e
+          ci/forja.sh run --registry ghcr --name "${{ github.repository }}" \
+            --tag "$E2E_TAG-${{ matrix.arch }}" --immutable testdata/multi > saida.txt 2>&1; code=$?
+          set -e
+          cat saida.txt
+          test "$code" -eq 2
+          if grep -q "\[2/5\] build" saida.txt; then echo "não deveria ter buildado"; exit 1; fi
 
       - name: "a imagem publicada roda nesta arquitetura (RUN nativo)"
         run: docker run --rm "$E2E:$E2E_TAG-${{ matrix.arch }}" | tee /dev/stderr | grep -q "buildado em $(uname -m)"
@@ -153,3 +166,48 @@ jobs:
           kubectl logs pod/forja-build | tee pod.txt
           if [ "$phase" != "Succeeded" ]; then kubectl describe pod/forja-build; exit 1; fi
           grep -q "PUSH OK" pod.txt
+
+  ecr:
+    # ECR emulado pelo floci: credencial pelo SDK da AWS (a mesma cadeia que usa
+    # a Pod Identity no EKS), --registry ecr, push e imutabilidade do repositório.
+    needs: image
+    runs-on: ubuntu-24.04
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localhost:4566
+      FORJA_ECR_ACCOUNT: "000000000000"
+      FORJA_ECR_HOST: 000000000000.dkr.ecr.us-east-1.localhost:4566
+      FORJA_DOCKER_OPTS: --add-host 000000000000.dkr.ecr.us-east-1.localhost:127.0.0.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR (para baixar a imagem do forja)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: subir o floci e criar o repositório IMMUTABLE (como a plataforma faria)
+        run: |
+          docker network create floci-net
+          docker run -d --name floci --network floci-net -p 4566:4566 \
+            -e FLOCI_SERVICES_DOCKER_NETWORK=floci-net \
+            -v /var/run/docker.sock:/var/run/docker.sock floci/floci:2.1.0
+          for i in $(seq 1 60); do curl -sf http://localhost:4566/_floci/health > /dev/null && break; sleep 2; done
+          aws ecr create-repository --repository-name org/app --image-tag-mutability IMMUTABLE
+      - name: "forja run --registry ecr: credencial do SDK, build, scan e push"
+        run: |
+          ci/forja.sh run --registry ecr --name Org/App --tag refs/tags/v1.0.0 \
+            --tls-verify=false testdata/multi | tee saida.txt
+          grep -q "PUSH OK   000000000000.dkr.ecr.us-east-1.localhost:4566/org/app:v1.0.0" saida.txt
+      - name: "o ECR tem a imagem, com o mesmo digest"
+        run: |
+          digest=$(grep -o "sha256:[a-f0-9]*" saida.txt | tail -1)
+          aws ecr describe-images --repository-name org/app \
+            --query "imageDetails[?imageTags[0]=='v1.0.0'].imageDigest" --output text | tee ecr.txt
+          grep -q "$digest" ecr.txt
+      - name: "repositório IMMUTABLE: o ECR recusa sobrescrever a tag"
+        run: |
+          set +e
+          ci/forja.sh run --registry ecr --name org/app --tag v1.0.0 --tls-verify=false testdata/multi > saida2.txt 2>&1; code=$?
+          set -e
+          grep -E "erro|immutable" saida2.txt | head -3
+          test "$code" -ne 0
+          grep -q "cannot be overwritten because the tag is immutable" saida2.txt

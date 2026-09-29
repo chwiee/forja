@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 
 	// Certificados CA embutidos, usados só se a imagem não tiver nenhum
@@ -9,6 +10,7 @@ import (
 
 	"github.com/chwiee/forja/internal/build"
 	"github.com/chwiee/forja/internal/cli"
+	"github.com/chwiee/forja/internal/registries"
 	"github.com/chwiee/forja/internal/registry"
 	"github.com/chwiee/forja/internal/scan"
 )
@@ -23,5 +25,8 @@ func main() {
 		NewClient: func(cfg registry.Config) registry.Client { return registry.NewRemote(cfg) },
 		Engine:    build.Buildah{},
 		Scanner:   scan.Scan,
+		Credentials: func(ctx context.Context, r registries.Registry) (*registries.Credentials, error) {
+			return r.Credentials(ctx)
+		},
 	}))
 }

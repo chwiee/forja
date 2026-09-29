@@ -17,17 +17,24 @@ type finding struct {
 }
 
 func newInspectCmd(opts *options) *cobra.Command {
-	var failOnFindings bool
+	var (
+		failOnFindings bool
+		img            imageArg
+	)
 
 	cmd := &cobra.Command{
-		Use:   "inspect IMAGEM",
+		Use:   "inspect [IMAGEM]",
 		Short: "Mostra USER/ENV/LABELS e aponta variáveis sensíveis hardcoded",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := opts.ctx(cmd)
 			defer cancel()
 
-			info, err := opts.client.Inspect(ctx, args[0])
+			image, err := opts.imageFromArgs(ctx, args, img)
+			if err != nil {
+				return err
+			}
+			info, err := opts.client.Inspect(ctx, image)
 			if err != nil {
 				return err
 			}
@@ -45,10 +52,10 @@ func newInspectCmd(opts *options) *cobra.Command {
 
 			out := cmd.OutOrStdout()
 			if opts.output == "json" {
-				_ = json.NewEncoder(out).Encode(map[string]any{"image": args[0], "config": info, "findings": findings})
+				_ = json.NewEncoder(out).Encode(map[string]any{"image": image, "config": info, "findings": findings})
 			} else {
 				tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-				fmt.Fprintf(tw, "IMAGEM\t%s\nCONFIG DIGEST\t%s\nUSER\t%q\n", args[0], info.Digest, info.User)
+				fmt.Fprintf(tw, "IMAGEM\t%s\nCONFIG DIGEST\t%s\nUSER\t%q\n", image, info.Digest, info.User)
 				for _, e := range info.Env {
 					fmt.Fprintf(tw, "ENV\t%s\n", mask(e))
 				}
@@ -59,11 +66,12 @@ func newInspectCmd(opts *options) *cobra.Command {
 			}
 
 			if failOnFindings && len(findings) > 0 {
-				return &ExitError{Code: ExitFindings, Err: fmt.Errorf("%d achado(s) em %s", len(findings), args[0])}
+				return &ExitError{Code: ExitFindings, Err: fmt.Errorf("%d achado(s) em %s", len(findings), image)}
 			}
 			return nil
 		},
 	}
+	img.register(cmd, true)
 	cmd.Flags().BoolVar(&failOnFindings, "fail-on-findings", false, "sai com código 3 se houver achados (gate de CI)")
 	return cmd
 }

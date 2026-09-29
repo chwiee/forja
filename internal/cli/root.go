@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -33,20 +34,25 @@ func (e *ExitError) Unwrap() error { return e.Err }
 
 // Deps são as dependências externas. O main passa as reais; o teste, fakes.
 type Deps struct {
-	NewClient func(registry.Config) registry.Client
-	Engine    build.Engine
-	Scanner   Scanner
+	NewClient   func(registry.Config) registry.Client
+	Engine      build.Engine
+	Scanner     Scanner
+	Credentials CredentialsFunc
 }
 
 // options guarda os valores das flags globais (persistent flags).
 type options struct {
-	timeout       time.Duration
-	tlsVerify     bool
-	output        string
-	storageDriver string
+	timeout        time.Duration
+	tlsVerify      bool
+	output         string
+	storageDriver  string
+	registry       string
+	registriesFile string
 
 	deps   Deps
 	client registry.Client
+	log    io.Writer       // stderr do comando
+	authed map[string]bool // hosts cuja credencial já foi instalada
 }
 
 // NewRootCmd monta o comando raiz e pendura os subcomandos nele.
@@ -67,6 +73,7 @@ Exit codes: 0 ok | 1 erro | 2 tag inexistente (ou já existente com --immutable)
 				return fmt.Errorf("--output deve ser table ou json, recebi %q", opts.output)
 			}
 			opts.client = opts.deps.NewClient(registry.Config{TLSVerify: opts.tlsVerify})
+			opts.log = cmd.ErrOrStderr()
 			return nil
 		},
 	}
@@ -76,6 +83,8 @@ Exit codes: 0 ok | 1 erro | 2 tag inexistente (ou já existente com --immutable)
 	pf.BoolVar(&opts.tlsVerify, "tls-verify", true, "valida o certificado TLS do registry")
 	pf.StringVarP(&opts.output, "output", "o", "table", "formato de saída: table|json")
 	pf.StringVar(&opts.storageDriver, "storage-driver", envOr("STORAGE_DRIVER", "vfs"), "driver de storage: vfs|overlay (env STORAGE_DRIVER)")
+	pf.StringVar(&opts.registry, "registry", "", "registry por nome (ecr, ghcr): usa --name e --tag para montar a imagem")
+	pf.StringVar(&opts.registriesFile, "registries", os.Getenv("FORJA_REGISTRIES"), "arquivo de registries (padrão: o embutido; env FORJA_REGISTRIES)")
 
 	root.AddCommand(
 		newBuildCmd(opts),
