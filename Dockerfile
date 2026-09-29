@@ -27,5 +27,8 @@ RUN xx-go build -trimpath \
 # policy.json, registries.conf e certificados CA já vêm embutidos no binário.
 FROM gcr.io/distroless/static-debian13
 COPY --from=build /out/forja /usr/local/bin/forja
+# Temporários em /var/tmp, que o forja já exige gravável: com a raiz somente
+# leitura (pod), /tmp não é gravável e o download do banco de CVEs falhava.
+ENV TMPDIR=/var/tmp
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/forja"]

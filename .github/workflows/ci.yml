@@ -17,6 +17,11 @@ permissions:
   contents: read
   packages: write
 
+# um push novo cancela a execução anterior do mesmo branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   IMAGE: ghcr.io/${{ github.repository }}          # a imagem do forja
   E2E: ghcr.io/${{ github.repository }}            # imagens de teste: mesmo pacote, tags e2e-*
