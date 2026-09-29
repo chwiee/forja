@@ -18,8 +18,8 @@ spec:
       volumeMounts: [{ name: workspace, mountPath: /workspace }]
   containers:
     - name: forja
-      image: ghcr.io/chwiee/forja:0.2.0   # multi-arch: o nó puxa a variante dele
-      args: ["build", "-t", "registry.interno/app:1.0-arm64", "--push", "/workspace"]
+      image: ghcr.io/chwiee/forja:0.3.0   # multi-arch: o nó puxa a variante dele
+      args: ["run", "-t", "registry.interno/app:1.0-arm64", "--immutable", "/workspace"]
       env:
         - { name: STORAGE_DRIVER, value: overlay }
         - { name: REGISTRY_AUTH_FILE, value: /auth/config.json }
