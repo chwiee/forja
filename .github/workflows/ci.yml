@@ -27,7 +27,7 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}          # a imagem do forja
   E2E: ghcr.io/${{ github.repository }}            # imagens de teste: mesmo pacote, tags e2e-*
   TAG: sha-${{ github.sha }}
-  E2E_TAG: e2e-${{ github.sha }}
+  E2E_TAG: e2e-${{ github.run_id }}   # único por execução: a release roda no mesmo commit da main
   FORJA_IMAGE: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
 
 jobs:
