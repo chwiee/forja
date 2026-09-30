@@ -1,0 +1,28 @@
+# Limpa do GHCR as imagens de teste do CI (tags e2e-*) com mais de 7 dias.
+# Toda segunda às 06:00 UTC. Pela aba Actions dá para rodar em modo seco.
+name: limpeza
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      aplicar:
+        description: "apagar de verdade (desmarcado = só listar)"
+        type: boolean
+        default: false
+permissions:
+  packages: write
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: apagar imagens e2e-* antigas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.aplicar }}" = "true" ]; then
+            ci/limpar-e2e.sh --aplicar
+          else
+            ci/limpar-e2e.sh
+          fi
