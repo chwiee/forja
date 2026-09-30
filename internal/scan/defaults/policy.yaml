@@ -1,0 +1,41 @@
+# Política padrão do forja scan. Copie para o repositório da aplicação como
+# forja-policy.yaml e ajuste; passe com --policy forja-policy.yaml.
+
+# Nota mínima (0 a 100). Abaixo disso o gate reprova: exit 3, nada é publicado.
+min_score: 70
+
+# Quanto cada achado desconta da nota.
+weights:
+  secret: 40          # token/chave encontrado em arquivo da imagem
+  sensitive_env: 25   # ENV/ARG com nome sensível e valor fixo (DB_PASSWORD=...)
+  root_user: 5        # imagem roda como root
+  vulnerability:      # CVEs, por severidade
+    critical: 15
+    high: 5
+    medium: 1
+    low: 0
+    negligible: 0
+    unknown: 0
+
+# Desconto máximo por categoria, para uma categoria sozinha não zerar tudo.
+# Secrets não têm teto: um único segredo vazado já reprova.
+caps:
+  vulnerability: 60
+  root_user: 5
+
+# Reprova sempre, independente da nota.
+fail_on:
+  secrets: true               # qualquer secret reprova
+  critical_with_fix: true     # CVE crítica com correção disponível reprova
+
+# Exceções: todas exigem motivo, dono e data de expiração.
+# Depois da data, a exceção deixa de valer e o achado volta a contar.
+ignore: []
+#  - id: CVE-2024-12345
+#    reason: "biblioteca não é usada em runtime"
+#    owner: time-plataforma
+#    expires: 2026-12-31
+#  - id: root_user
+#    reason: "imagem oficial do postgres troca de usuário no entrypoint"
+#    owner: time-dados
+#    expires: 2027-03-31

@@ -11,7 +11,7 @@ import (
 )
 
 // ErrUnsupported é devolvido fora do Linux: o buildah precisa do kernel Linux.
-var ErrUnsupported = errors.New("build e push só funcionam em Linux; no Windows ou macOS rode a imagem do forja com Docker (veja o capítulo 14)")
+var ErrUnsupported = errors.New("build e push só funcionam em Linux; no Windows ou macOS rode a imagem do forja com Docker (veja 'Rodando no Windows' no Manual da Forja)")
 
 // Options descreve um build.
 type Options struct {
@@ -41,6 +41,20 @@ type ManifestOptions struct {
 	StorageDriver string
 	TLSVerify     bool
 	Out           io.Writer
+}
+
+// ExportOptions exporta uma imagem do storage local para diretório(s) OCI,
+// que é o que o scan lê: os mesmos bytes que o push vai publicar.
+type ExportOptions struct {
+	Image         string
+	Dir           string // diretório base; um subdiretório por arquitetura se for manifest list
+	StorageDriver string
+}
+
+// Exported é uma imagem exportada: a plataforma e o diretório OCI dela.
+type Exported struct {
+	Platform string
+	Dir      string
 }
 
 // Platform é um par sistema/arquitetura, como linux/arm64.
@@ -74,6 +88,7 @@ type Engine interface {
 	Build(ctx context.Context, o Options) (imageID string, err error)
 	Push(ctx context.Context, o PushOptions) (digest string, err error)
 	Manifest(ctx context.Context, o ManifestOptions) (digest string, err error)
+	Export(ctx context.Context, o ExportOptions) ([]Exported, error)
 }
 
 // Buildah é a implementação real (ou o stub, fora do Linux).

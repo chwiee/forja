@@ -10,6 +10,7 @@ FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26.8-alpine AS build
 COPY --from=xx / /
 RUN apk add --no-cache clang lld
 ARG TARGETPLATFORM
+ARG VERSION=dev
 # gcc/musl-dev da arquitetura de DESTINO (xx-apk instala a versão certa)
 RUN xx-apk add --no-cache gcc musl-dev linux-headers
 WORKDIR /src
@@ -18,7 +19,7 @@ RUN go mod download
 COPY . .
 ENV CGO_ENABLED=1
 RUN xx-go build -trimpath \
-    -ldflags "-s -w -linkmode external -extldflags '-static'" \
+    -ldflags "-s -w -X github.com/chwiee/forja/internal/cli.version=${VERSION} -linkmode external -extldflags '-static'" \
     -tags "containers_image_openpgp exclude_graphdriver_btrfs" \
     -o /out/forja ./cmd/forja && \
     xx-verify --static /out/forja
@@ -26,5 +27,8 @@ RUN xx-go build -trimpath \
 # policy.json, registries.conf e certificados CA já vêm embutidos no binário.
 FROM gcr.io/distroless/static-debian13
 COPY --from=build /out/forja /usr/local/bin/forja
+# Temporários em /var/tmp, que o forja já exige gravável: com a raiz somente
+# leitura (pod), /tmp não é gravável e o download do banco de CVEs falhava.
+ENV TMPDIR=/var/tmp
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/forja"]

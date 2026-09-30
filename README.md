@@ -13,24 +13,27 @@ etapa acrescenta à anterior:
 | `estudo-e3` | scan (Syft, Grype, Gitleaks), nota, gate e `run` | 11, 12, 14, 15 |
 | `estudo-e4` | produção: `--registry`/ECR, CI, livro — igual à `main` | 17, 18, 19 |
 
-## Etapa atual: e2 — o motor buildah
+## Etapa atual: e3 — scan, nota e gate
 
-O que tem: `forja build` (uma ou várias arquiteturas com `--platform`),
-`push`, `manifest`, a interface de rede própria (`hostnet_linux.go`), o limite
-de arquivos correto para os RUN (`currentUlimits`), a configuração embutida
-(`policy.json`, `registries.conf`) e a imagem estática multi-arch (`Dockerfile`).
-No Windows, `build` e `push` recusam com mensagem clara: rode a imagem.
+O que tem: `forja scan` (Syft + Grype para CVEs, Gitleaks para secrets em todas
+as camadas e no histórico, ENV/ARG/USER), a política com pesos, tetos e
+exceções (`internal/scan/defaults/policy.yaml`), saída em tabela/JSON/SARIF, e
+`forja run`: exists → build → scan → gate → push. Imagens-isca em `testdata/iscas`.
 
-Validar:
+Validar (com o registry `lab` da etapa 2):
 
     go test -tags containers_image_openpgp ./...
-    docker build -t forja:e2 .
-    docker network create lab
-    docker run -d --name registry --network lab registry:3
-    docker run --rm --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE \
-      --cap-add FOWNER --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE --cap-add SETFCAP \
-      --cap-add SETGID --cap-add SETPCAP --cap-add SETUID --cap-add SYS_CHROOT \
-      --network lab -v "$PWD:/workspace" -v e2-tmp:/var/tmp \
-      forja:e2 build -t registry:5000/estudo/e2:1 --push --tls-verify=false testdata/multi
+    docker build -t forja:e3 .
+    FORJA="docker run --rm --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE 
+      --cap-add FOWNER --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE --cap-add SETFCAP 
+      --cap-add SETGID --cap-add SETPCAP --cap-add SETUID --cap-add SYS_CHROOT 
+      --network lab -v $PWD:/workspace -v e3-tmp:/var/tmp forja:e3"
+    $FORJA run -t registry:5000/estudo/e3:1 --tls-verify=false testdata/multi
+    TOKEN="ghp_$(head -c 300 /dev/urandom | tr -dc A-Za-z0-9 | head -c 36)"
+    $FORJA run -t registry:5000/estudo/e3:secret --build-arg "API_TOKEN=$TOKEN" --tls-verify=false testdata/iscas/secret
 
-Esperado: `BUILD OK  registry:5000/estudo/e2:1` e `PUSH OK ... sha256:...`.
+Esperado: a primeira APROVADA com `PUSH OK` (exit 0); a segunda REPROVADA com
+`REPROVOU: secret encontrado` e `nada foi publicado` (exit 3).
+
+Use um token ALEATÓRIO: o Gitleaks ignora tokens de baixa entropia
+(`ghp_abcdef...0123456789` passa sem ser acusado como secret).

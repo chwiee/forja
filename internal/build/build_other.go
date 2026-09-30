@@ -10,3 +10,4 @@ func InitReexec() bool { return false }
 func (Buildah) Build(context.Context, Options) (string, error)            { return "", ErrUnsupported }
 func (Buildah) Push(context.Context, PushOptions) (string, error)         { return "", ErrUnsupported }
 func (Buildah) Manifest(context.Context, ManifestOptions) (string, error) { return "", ErrUnsupported }
+func (Buildah) Export(context.Context, ExportOptions) ([]Exported, error) { return nil, ErrUnsupported }

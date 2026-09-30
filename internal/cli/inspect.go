@@ -3,15 +3,13 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-)
 
-// sensitiveName pega nomes de variáveis que costumam guardar segredo.
-var sensitiveName = regexp.MustCompile(`(?i)(pass(word)?|secret|token|api[_-]?key|private[_-]?key|credential)`)
+	"github.com/chwiee/forja/internal/scan"
+)
 
 type finding struct {
 	Variable string `json:"variable"`
@@ -37,7 +35,7 @@ func newInspectCmd(opts *options) *cobra.Command {
 			var findings []finding
 			for _, kv := range info.Env {
 				name, value, _ := strings.Cut(kv, "=")
-				if sensitiveName.MatchString(name) && value != "" {
+				if scan.SensitiveName.MatchString(name) && value != "" {
 					findings = append(findings, finding{name, "nome sensível com valor fixo na imagem"})
 				}
 			}
@@ -73,7 +71,7 @@ func newInspectCmd(opts *options) *cobra.Command {
 // mask esconde o valor de variáveis sensíveis: nunca imprima segredo em log de CI.
 func mask(kv string) string {
 	name, value, ok := strings.Cut(kv, "=")
-	if ok && sensitiveName.MatchString(name) && value != "" {
+	if ok && scan.SensitiveName.MatchString(name) && value != "" {
 		return name + "=****"
 	}
 	return kv

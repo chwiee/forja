@@ -10,6 +10,7 @@ import (
 	"github.com/chwiee/forja/internal/build"
 	"github.com/chwiee/forja/internal/cli"
 	"github.com/chwiee/forja/internal/registry"
+	"github.com/chwiee/forja/internal/scan"
 )
 
 func main() {
@@ -21,5 +22,6 @@ func main() {
 	os.Exit(cli.Execute(cli.Deps{
 		NewClient: func(cfg registry.Config) registry.Client { return registry.NewRemote(cfg) },
 		Engine:    build.Buildah{},
+		Scanner:   scan.Scan,
 	}))
 }

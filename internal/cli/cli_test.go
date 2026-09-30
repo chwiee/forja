@@ -10,6 +10,7 @@ import (
 
 	"github.com/chwiee/forja/internal/build"
 	"github.com/chwiee/forja/internal/registry"
+	"github.com/chwiee/forja/internal/scan"
 )
 
 // fakeRegistry implementa registry.Client sem tocar na rede.
@@ -36,6 +37,22 @@ type fakeEngine struct {
 	gotManifest build.ManifestOptions
 	pushed      bool
 	buildErr    error
+
+	exportPlatforms []string       // plataformas que o Export devolve (vazio = imagem simples)
+	findings        []scan.Finding // o que o scanner falso encontra
+	scanned         []string       // alvos que foram escaneados
+}
+
+func (f *fakeEngine) Export(_ context.Context, o build.ExportOptions) ([]build.Exported, error) {
+	plats := f.exportPlatforms
+	if len(plats) == 0 {
+		plats = []string{""}
+	}
+	var out []build.Exported
+	for _, p := range plats {
+		out = append(out, build.Exported{Platform: p, Dir: filepath.Join(o.Dir, p)})
+	}
+	return out, nil
 }
 
 func (f *fakeEngine) Build(_ context.Context, o build.Options) (string, error) {
@@ -87,9 +104,14 @@ func TestManifest(t *testing.T) {
 // run executa o CLI como se fosse o terminal e devolve saída + exit code.
 func run(t *testing.T, reg *fakeRegistry, eng *fakeEngine, args ...string) (string, int) {
 	t.Helper()
+	hostOS = "linux" // o scan real recusa Windows; aqui o scanner é falso
 	cmd := NewRootCmd(Deps{
 		NewClient: func(registry.Config) registry.Client { return reg },
 		Engine:    eng,
+		Scanner: func(_ context.Context, tg scan.Target, _ scan.Options) (*scan.Report, error) {
+			eng.scanned = append(eng.scanned, tg.Name)
+			return &scan.Report{Image: tg.Name, Findings: append([]scan.Finding(nil), eng.findings...)}, nil
+		},
 	})
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -192,5 +214,73 @@ func TestInspectMasksSecrets(t *testing.T) {
 	}
 	if strings.Contains(out, "supersecreta") {
 		t.Error("o valor do segredo vazou na saída")
+	}
+}
+
+func TestScanGate(t *testing.T) {
+	clean := &fakeEngine{}
+	out, code := run(t, &fakeRegistry{}, clean, "scan", "reg/app:1", "--skip-cves")
+	if code != ExitOK || !strings.Contains(out, "APROVADA") {
+		t.Errorf("imagem limpa: exit = %d, saída: %s", code, out)
+	}
+
+	leaky := &fakeEngine{findings: []scan.Finding{{Category: scan.CatSecret, ID: "github-pat", Location: "/etc/app.conf"}}}
+	out, code = run(t, &fakeRegistry{}, leaky, "scan", "reg/app:1")
+	if code != ExitFindings || !strings.Contains(out, "REPROVADA") || !strings.Contains(out, "secret encontrado") {
+		t.Errorf("com secret: exit = %d, saída: %s", code, out)
+	}
+}
+
+func TestScanMultiArchScansEachPlatform(t *testing.T) {
+	eng := &fakeEngine{exportPlatforms: []string{"linux/amd64", "linux/arm64"}}
+	_, code := run(t, &fakeRegistry{}, eng, "scan", "reg/app:1")
+	if code != ExitOK || len(eng.scanned) != 2 {
+		t.Errorf("exit = %d, escaneados = %v; queria as 2 arquiteturas", code, eng.scanned)
+	}
+}
+
+func TestRunStopsAtGate(t *testing.T) {
+	// Reprovada: builda, escaneia e NÃO publica.
+	bad := &fakeEngine{findings: []scan.Finding{{Category: scan.CatSecret, ID: "aws-access-token"}}}
+	out, code := run(t, &fakeRegistry{}, bad, "run", "-t", "reg/app:1")
+	if code != ExitFindings || bad.pushed {
+		t.Errorf("reprovada: exit = %d, pushed = %v; queria exit 3 sem push (saída: %s)", code, bad.pushed, out)
+	}
+	if !strings.Contains(out, "nada foi publicado") {
+		t.Errorf("a saída precisa deixar claro que nada foi publicado: %s", out)
+	}
+
+	// Aprovada: publica.
+	good := &fakeEngine{}
+	out, code = run(t, &fakeRegistry{}, good, "run", "-t", "reg/app:1")
+	if code != ExitOK || !good.pushed || !strings.Contains(out, "PUSH OK") {
+		t.Errorf("aprovada: exit = %d, pushed = %v, saída: %s", code, good.pushed, out)
+	}
+
+	// --immutable com tag existente: para antes do build.
+	exists := &fakeEngine{}
+	_, code = run(t, &fakeRegistry{digests: map[string]string{"reg/app:1": "sha256:x"}}, exists, "run", "-t", "reg/app:1", "--immutable")
+	if code != ExitNotFound || exists.gotBuild.Image != "" {
+		t.Errorf("tag existente: exit = %d, buildou = %q; queria exit 2 sem build", code, exists.gotBuild.Image)
+	}
+}
+
+func TestScanRefusesNativeWindows(t *testing.T) {
+	cmd := NewRootCmd(Deps{
+		NewClient: func(registry.Config) registry.Client { return &fakeRegistry{} },
+		Engine:    &fakeEngine{},
+		Scanner: func(context.Context, scan.Target, scan.Options) (*scan.Report, error) {
+			t.Fatal("não deveria escanear no Windows")
+			return nil, nil
+		},
+	})
+	hostOS = "windows"
+	defer func() { hostOS = "linux" }()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"scan", "--remote", "reg/app:1"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "Windows nativo") {
+		t.Errorf("queria recusa clara no Windows, veio %v", err)
 	}
 }

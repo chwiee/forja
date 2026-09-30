@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -11,15 +12,59 @@ import (
 	"github.com/chwiee/forja/internal/build"
 )
 
+// buildFlags são as flags de build, usadas por build e por run.
+type buildFlags struct {
+	file      string
+	tag       string
+	buildArgs []string
+	platforms []string
+}
+
+func (b *buildFlags) register(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.StringVarP(&b.file, "file", "f", "Dockerfile", "caminho do Dockerfile (relativo ao contexto)")
+	f.StringVarP(&b.tag, "tag", "t", "", "nome da imagem: registry/repo:tag")
+	f.StringArrayVar(&b.buildArgs, "build-arg", nil, "variável de build CHAVE=VALOR (pode repetir)")
+	f.StringSliceVar(&b.platforms, "platform", nil, "plataformas, ex.: linux/amd64,linux/arm64 (gera um manifest list)")
+	_ = cmd.MarkFlagRequired("tag")
+}
+
+// options valida as flags e monta o build.Options.
+func (b *buildFlags) options(args []string, opts *options, log io.Writer) (build.Options, error) {
+	contextDir := "."
+	if len(args) == 1 {
+		contextDir = args[0]
+	}
+	file := b.file
+	// Dockerfile relativo é procurado dentro do contexto, como no docker build.
+	if !filepath.IsAbs(file) {
+		file = filepath.Join(contextDir, file)
+	}
+	parsedArgs, err := parseBuildArgs(b.buildArgs)
+	if err != nil {
+		return build.Options{}, err
+	}
+	parsedPlatforms, err := parsePlatforms(b.platforms)
+	if err != nil {
+		return build.Options{}, err
+	}
+	return build.Options{
+		Containerfile: file,
+		ContextDir:    contextDir,
+		Image:         b.tag,
+		BuildArgs:     parsedArgs,
+		Platforms:     parsedPlatforms,
+		StorageDriver: opts.storageDriver,
+		TLSVerify:     opts.tlsVerify,
+		Out:           log,
+	}, nil
+}
+
 func newBuildCmd(opts *options) *cobra.Command {
 	var (
-		file      string
-		tag       string
-		buildArgs []string
-		platforms []string
-		push      bool
+		bf   buildFlags
+		push bool
 	)
-
 	cmd := &cobra.Command{
 		Use:   "build [CONTEXTO]",
 		Short: "Builda uma imagem a partir de um Dockerfile (CONTEXTO padrão: .)",
@@ -28,45 +73,22 @@ func newBuildCmd(opts *options) *cobra.Command {
   forja build --platform linux/amd64,linux/arm64 -t ghcr.io/org/app:1.0 --push .`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			contextDir := "."
-			if len(args) == 1 {
-				contextDir = args[0]
-			}
-			// Dockerfile relativo é procurado dentro do contexto, como no docker build.
-			if !filepath.IsAbs(file) {
-				file = filepath.Join(contextDir, file)
-			}
-			parsedArgs, err := parseBuildArgs(buildArgs)
+			log := cmd.ErrOrStderr() // logs do build no stderr; o resultado no stdout
+			o, err := bf.options(args, opts, log)
 			if err != nil {
 				return err
 			}
-			parsedPlatforms, err := parsePlatforms(platforms)
-			if err != nil {
-				return err
-			}
-
 			ctx, cancel := opts.ctx(cmd)
 			defer cancel()
 
-			log := cmd.ErrOrStderr() // logs do build no stderr; o resultado no stdout
-			id, err := opts.deps.Engine.Build(ctx, build.Options{
-				Containerfile: file,
-				ContextDir:    contextDir,
-				Image:         tag,
-				BuildArgs:     parsedArgs,
-				Platforms:     parsedPlatforms,
-				StorageDriver: opts.storageDriver,
-				TLSVerify:     opts.tlsVerify,
-				Out:           log,
-			})
+			id, err := opts.deps.Engine.Build(ctx, o)
 			if err != nil {
 				return err
 			}
-
-			result := map[string]string{"image": tag, "id": id}
+			result := map[string]string{"image": bf.tag, "id": id}
 			if push {
 				digest, err := opts.deps.Engine.Push(ctx, build.PushOptions{
-					Image: tag, StorageDriver: opts.storageDriver, TLSVerify: opts.tlsVerify, Out: log,
+					Image: bf.tag, StorageDriver: opts.storageDriver, TLSVerify: opts.tlsVerify, Out: log,
 				})
 				if err != nil {
 					return err
@@ -78,21 +100,15 @@ func newBuildCmd(opts *options) *cobra.Command {
 			if opts.output == "json" {
 				return json.NewEncoder(out).Encode(result)
 			}
-			fmt.Fprintf(out, "BUILD OK  %s  id=%s\n", tag, short(id))
+			fmt.Fprintf(out, "BUILD OK  %s  id=%s\n", bf.tag, short(id))
 			if push {
-				fmt.Fprintf(out, "PUSH OK   %s  %s\n", tag, result["digest"])
+				fmt.Fprintf(out, "PUSH OK   %s  %s\n", bf.tag, result["digest"])
 			}
 			return nil
 		},
 	}
-
-	f := cmd.Flags()
-	f.StringVarP(&file, "file", "f", "Dockerfile", "caminho do Dockerfile (relativo ao contexto)")
-	f.StringVarP(&tag, "tag", "t", "", "nome da imagem: registry/repo:tag")
-	f.StringArrayVar(&buildArgs, "build-arg", nil, "variável de build CHAVE=VALOR (pode repetir)")
-	f.StringSliceVar(&platforms, "platform", nil, "plataformas, ex.: linux/amd64,linux/arm64 (gera um manifest list)")
-	f.BoolVar(&push, "push", false, "publica a imagem no registry depois do build")
-	_ = cmd.MarkFlagRequired("tag")
+	bf.register(cmd)
+	cmd.Flags().BoolVar(&push, "push", false, "publica a imagem no registry depois do build (sem scan; prefira forja run)")
 	return cmd
 }
 
@@ -108,13 +124,6 @@ func parseBuildArgs(in []string) (map[string]string, error) {
 	return out, nil
 }
 
-func short(id string) string {
-	if len(id) > 12 {
-		return id[:12]
-	}
-	return id
-}
-
 func parsePlatforms(in []string) ([]build.Platform, error) {
 	out := make([]build.Platform, 0, len(in))
 	for _, s := range in {
@@ -125,4 +134,11 @@ func parsePlatforms(in []string) ([]build.Platform, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+func short(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
 }

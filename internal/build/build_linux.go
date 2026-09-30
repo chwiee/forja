@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"go.podman.io/buildah"
@@ -15,6 +18,7 @@ import (
 	"go.podman.io/common/libimage"
 	imagecopy "go.podman.io/image/v5/copy"
 	"go.podman.io/image/v5/docker"
+	"go.podman.io/image/v5/oci/layout"
 	"go.podman.io/image/v5/types"
 	"go.podman.io/storage"
 	"golang.org/x/sys/unix"
@@ -198,6 +202,75 @@ func pushList(ctx context.Context, list *libimage.ManifestList, name string, sys
 		return "", fmt.Errorf("push do manifest list: %w", err)
 	}
 	return digest.String(), nil
+}
+
+// Export grava a imagem (ou cada arquitetura de um manifest list) num
+// diretório OCI. O scan lê esse diretório: são os bytes que o push publica.
+func (Buildah) Export(ctx context.Context, o ExportOptions) ([]Exported, error) {
+	sys, err := systemContext(true)
+	if err != nil {
+		return nil, err
+	}
+	store, err := openStore(o.StorageDriver)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _, _ = store.Shutdown(false) }()
+
+	rt, err := libimage.RuntimeFromStore(store, &libimage.RuntimeOptions{SystemContext: sys})
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := rt.LookupManifestList(o.Image)
+	if err != nil {
+		if !errors.Is(err, storage.ErrImageUnknown) && !errors.Is(err, libimage.ErrNotAManifestList) {
+			return nil, err
+		}
+		// imagem simples
+		if err := exportOne(ctx, store, sys, o.Image, o.Dir); err != nil {
+			return nil, err
+		}
+		return []Exported{{Platform: "", Dir: o.Dir}}, nil
+	}
+
+	data, err := list.Inspect()
+	if err != nil {
+		return nil, fmt.Errorf("lendo manifest list: %w", err)
+	}
+	var out []Exported
+	for _, m := range data.Manifests {
+		p := Platform{OS: m.Platform.OS, Arch: m.Platform.Architecture, Variant: m.Platform.Variant}
+		img, err := list.LookupInstance(ctx, p.Arch, p.OS, p.Variant)
+		if err != nil {
+			return nil, fmt.Errorf("achando a imagem %s do manifest list: %w", p, err)
+		}
+		dir := filepath.Join(o.Dir, strings.ReplaceAll(p.String(), "/", "-"))
+		if err := exportOne(ctx, store, sys, img.ID(), dir); err != nil {
+			return nil, err
+		}
+		out = append(out, Exported{Platform: p.String(), Dir: dir})
+	}
+	return out, nil
+}
+
+func exportOne(ctx context.Context, store storage.Store, sys *types.SystemContext, image, dir string) error {
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	dest, err := layout.NewReference(dir, "forja")
+	if err != nil {
+		return err
+	}
+	if _, _, err := buildah.Push(ctx, image, dest, buildah.PushOptions{
+		Store:               store,
+		SystemContext:       sys,
+		SignaturePolicyPath: sys.SignaturePolicyPath,
+		ReportWriter:        io.Discard,
+	}); err != nil {
+		return fmt.Errorf("exportando %s para %s: %w", image, dir, err)
+	}
+	return nil
 }
 
 // currentUlimits devolve os tetos atuais do processo para nofile e nproc,

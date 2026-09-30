@@ -19,7 +19,7 @@ const (
 	ExitOK       = 0
 	ExitFailure  = 1 // erro inesperado (rede, parâmetro inválido, build quebrado...)
 	ExitNotFound = 2 // exists: a tag não existe; push --immutable: a tag já existe
-	ExitFindings = 3 // inspect: achou variável sensível hardcoded
+	ExitFindings = 3 // scan/run: reprovada no gate; inspect: achou variável sensível
 )
 
 // ExitError carrega um código de saída específico até o main.
@@ -35,6 +35,7 @@ func (e *ExitError) Unwrap() error { return e.Err }
 type Deps struct {
 	NewClient func(registry.Config) registry.Client
 	Engine    build.Engine
+	Scanner   Scanner
 }
 
 // options guarda os valores das flags globais (persistent flags).
@@ -54,11 +55,11 @@ func NewRootCmd(deps Deps) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "forja",
-		Short: "Builda, inspeciona e publica imagens de container sem Docker",
+		Short: "Builda, escaneia e publica imagens de container sem Docker",
 		Long: `forja builda imagens a partir de um Dockerfile usando a biblioteca do buildah,
 dentro do próprio processo: não precisa de Docker, daemon nem do binário buildah.
 
-Exit codes: 0 ok | 1 erro | 2 tag inexistente (ou já existente com --immutable) | 3 achados`,
+Exit codes: 0 ok | 1 erro | 2 tag inexistente (ou já existente com --immutable) | 3 reprovada no gate`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -80,6 +81,8 @@ Exit codes: 0 ok | 1 erro | 2 tag inexistente (ou já existente com --immutable)
 		newBuildCmd(opts),
 		newPushCmd(opts),
 		newManifestCmd(opts),
+		newScanCmd(opts),
+		newRunCmd(opts),
 		newExistsCmd(opts),
 		newInspectCmd(opts),
 		newVersionCmd(),
