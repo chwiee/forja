@@ -26,7 +26,7 @@
 <tr><td>Licença mal detectada</td><td><code>go-licenses</code> marcou GPL-2.0 numa dependência de licença dupla, e "Unknown" em três Apache-2.0</td><td>Relatório no CI + revisão humana registrada (cap. 12)</td></tr>
 <tr><td>Plataforma não suportada por uma lib</td><td>o Syft não escaneia no Windows nativo</td><td>Testar em cada plataforma que o CLI promete; recusar com mensagem clara</td></tr>
 <tr><td>Chave de assinatura</td><td>a chave privada do cosign assina tudo que o CI publica</td><td>Só em secret do repositório; cópia offline em cofre; rotacionar se vazar</td></tr>
-<tr><td>Imagens de teste acumulando</td><td>cada push publica <code>forja-e2e:sha-...</code> no GHCR</td><td>Política de retenção do pacote, ou limpeza periódica</td></tr>
+<tr><td>Imagens de teste acumulando</td><td>cada push publica <code>forja-e2e:sha-...</code> no GHCR</td><td>Limpeza semanal automática (<code>.github/workflows/limpeza.yml</code>): só apaga versões em que todas as tags começam com <code>e2e-</code> e têm mais de 7 dias (cap. 18)</td></tr>
 <tr><td>Emulador diferente do real</td><td>o floci repassa só um cabeçalho <code>Accept</code>; <code>exists</code> falha lá e funciona no registry real</td><td>Testar no emulador só o que ele emula fielmente; provar o resto num registry real (GHCR no CI)</td></tr>
 <tr><td>Credencial vazando para outro registry</td><td>o campo global de auth mandaria a senha do ECR ao Docker Hub</td><td>Arquivo de credenciais por host (cap. 19); teste <code>TestInstallAuthKeepsExistingCredentials</code></td></tr>
 <tr><td>Replicação assíncrona</td><td>deploy em outra região logo após o push pode não achar a imagem</td><td>Esperar a replicação antes do deploy (evolução prevista: <code>--wait-replication</code>)</td></tr>
