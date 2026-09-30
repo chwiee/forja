@@ -1,0 +1,2 @@
+FROM docker.io/library/ubuntu:22.04
+COPY --from=ghcr.io/chwiee/forja:0.2.0 /usr/local/bin/forja /usr/local/bin/forja

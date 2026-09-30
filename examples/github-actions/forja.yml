@@ -24,8 +24,9 @@ jobs:
             --security-opt apparmor=unconfined \
             -v "$PWD:/workspace" -v forja-tmp:/var/tmp \
             -v "$HOME/.docker/config.json:/auth/config.json:ro" -e REGISTRY_AUTH_FILE=/auth/config.json \
-            ghcr.io/chwiee/forja:0.3.0 \
-            run -t "ghcr.io/${{ github.repository }}:${{ github.ref_name }}" --immutable --sarif forja.sarif .
+            ghcr.io/chwiee/forja:0.4.1 \
+            run --registry ghcr --name "${{ github.repository }}" --tag "${{ github.ref }}" \
+              --immutable --sarif forja.sarif .
       # Nota: a aba Security em repositório PRIVADO exige GitHub Advanced Security.
       # Sem ele, troque este passo por actions/upload-artifact.
       - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2

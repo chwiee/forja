@@ -1,0 +1,59 @@
+<!-- ============================================================ 04 -->
+<section class="chapter" id="c4">
+<div class="ch-num">CAPÍTULO 04</div>
+<h2>Go para quem pensa em classes</h2>
+<p>Go não tem classes, herança nem exceções. Tem structs com métodos, interfaces implícitas e erros como valores de retorno. A "classe do buildah" que você procura é sempre uma função, um struct de opções e um tipo com métodos.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Você conhece</th><th>Em Go</th><th>No forja</th></tr></thead>
+<tbody>
+<tr><td>Classe</td><td>struct + métodos</td><td><code>build.Buildah</code> com <code>Build</code> e <code>Push</code></td></tr>
+<tr><td>Construtor</td><td>função <code>NewX(...)</code></td><td><code>registry.NewRemote(cfg)</code></td></tr>
+<tr><td>Parâmetros nomeados</td><td>struct de opções</td><td><code>define.BuildOptions{Output: "app:1"}</code></td></tr>
+<tr><td>public / private</td><td>Maiúscula / minúscula</td><td><code>Build</code> exportado, <code>openStore</code> privado</td></tr>
+<tr><td>implements</td><td>implícito: tem os métodos, satisfaz</td><td><code>hostNetwork</code> satisfaz a interface de rede do buildah</td></tr>
+<tr><td>Garantir implements</td><td><code>var _ Interface = Tipo{}</code></td><td>em <code>hostnet_linux.go</code></td></tr>
+<tr><td>try/catch</td><td><code>if err != nil { return err }</code></td><td>todo o código</td></tr>
+<tr><td>instanceof da exceção</td><td><code>errors.Is</code> / <code>errors.As</code></td><td><code>errors.Is(err, registry.ErrNotFound)</code></td></tr>
+<tr><td>finally</td><td><code>defer</code></td><td><code>defer store.Shutdown(false)</code></td></tr>
+<tr><td>Código por plataforma</td><td>sufixo <code>_linux.go</code> / build tag</td><td><code>build_linux.go</code> e <code>build_other.go</code></td></tr>
+<tr><td>Biblioteca</td><td>módulo (<code>go.mod</code>)</td><td><code>go.podman.io/buildah</code></td></tr>
+<tr><td>Timeout/cancelamento</td><td><code>context.Context</code></td><td><code>--timeout</code> vira contexto</td></tr>
+</tbody></table></div>
+<h3>As ideias num arquivo</h3>
+<div class="code"><div class="file"><span>exemplo.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">package exemplo
+
+import (
+	"context"
+	"errors"
+	"fmt"
+)
+
+// Erro "sentinela": o chamador compara com errors.Is.
+var ErrNotFound = errors.New("não encontrado")
+
+// Interface: descreve o que eu preciso, não quem implementa.
+type Store interface {
+	Get(ctx context.Context, key string) (string, error)
+}
+
+// Struct com dependência injetada (a "classe").
+type Service struct {
+	store Store // minúsculo: privado ao pacote
+}
+
+// Construtor: uma função que devolve o struct pronto.
+func NewService(s Store) *Service { return &amp;Service{store: s} }
+
+// Método com receiver ponteiro. Maiúsculo: exportado.
+func (s *Service) Describe(ctx context.Context, key string) (string, error) {
+	v, err := s.store.Get(ctx, key)
+	if errors.Is(err, ErrNotFound) {
+		return "(vazio)", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("lendo %q: %w", key, err) // %w mantém errors.Is/As
+	}
+	return v, nil
+}</code></pre></div>
+</section>
+

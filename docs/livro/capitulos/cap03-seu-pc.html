@@ -1,0 +1,23 @@
+<!-- ============================================================ 03 -->
+<section class="chapter" id="c3">
+<div class="ch-num">CAPÍTULO 03</div>
+<h2>Seu PC: o que já tem e o que falta</h2>
+<p>Você não precisa de Ubuntu. O Docker Desktop, que já está instalado, fornece o Linux que o forja precisa, e todo o livro foi testado assim.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Item</th><th>Encontrado em 29/09/2026</th><th>Situação</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td>11 Pro, 16 threads, 31 GB RAM, 251 GB livres</td><td><span class="badge ok">ok</span></td></tr>
+<tr><td>Docker Desktop</td><td>Engine 29.7.2, kernel WSL2 6.18, cgroup v2</td><td><span class="badge ok">ok</span></td></tr>
+<tr><td>Go</td><td>1.26.5 (o <code>go.mod</code> pede 1.26.8 e o Go baixa sozinho)</td><td><span class="badge ok">ok</span></td></tr>
+<tr><td>git / GitHub CLI</td><td>2.55.0 / 2.97.0 (logado como <code>chwiee</code>)</td><td><span class="badge ok">ok</span></td></tr>
+<tr><td>Editor</td><td>só Vim</td><td><span class="badge todo">instalar VS Code</span></td></tr>
+<tr><td>Ubuntu no WSL</td><td>não instalado</td><td>opcional</td></tr>
+</tbody></table></div>
+<div class="code"><div class="file"><span>PowerShell</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-plaintext">winget upgrade -e --id GoLang.Go
+winget install -e --id Microsoft.VisualStudioCode
+code --install-extension golang.go</code></pre></div>
+<p>O Docker Desktop precisa estar aberto sempre que você for rodar o forja em container. Confira com <code>docker version</code>: a linha <code>Server</code> tem que aparecer.</p>
+<div class="callout risk"><span class="tag">Por que atualizar o Go</span><p>O <code>govulncheck</code> encontrou 4 vulnerabilidades alcançáveis na biblioteca padrão do Go 1.26.5, corrigidas nos patches seguintes. O <code>go.mod</code> do forja declara <code>go 1.26.8</code> (o patch mais novo, descoberto porque o próprio Grype o exige). Com isso, qualquer <code>go</code> 1.21+ baixa o toolchain certo sozinho: aqui, <code>go version</code> passou a responder <code>go1.26.8</code> sem instalar nada. Resultado com 1.26.8: <b>0 vulnerabilidades</b>.</p></div>
+<div class="callout risk"><span class="tag">Licença do Docker Desktop</span><p>O Docker Desktop é gratuito para uso pessoal e para empresas com menos de 250 funcionários <b>e</b> menos de US$ 10 milhões de faturamento anual. Acima disso, exige assinatura. Para uso da empresa, confirme a licença ou use o Podman Desktop, que é gratuito e aceita os mesmos comandos.</p></div>
+</section>
+

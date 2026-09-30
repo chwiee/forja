@@ -1,0 +1,62 @@
+<!-- ============================================================ ECR -->
+<section class="chapter" id="c19">
+<div class="ch-num">CAPÍTULO 19</div>
+<h2>GHCR e ECR com <code>--registry</code> <span class="badge ok">testado</span></h2>
+<p>O time da aplicação não digita endereço de registry. Ele escolhe o destino por nome, e o forja monta o resto:</p>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">forja run --registry ecr  --name ${{ github.repository }} --tag ${{ github.ref }} .
+forja run --registry ghcr --name ${{ github.repository }} --tag ${{ github.ref }} .</code></pre></div>
+<div class="table-wrap"><table>
+<thead><tr><th>Entrada</th><th>Vira</th></tr></thead>
+<tbody>
+<tr><td><code>--registry ecr</code></td><td><code>&lt;conta central&gt;.dkr.ecr.us-east-1.amazonaws.com</code></td></tr>
+<tr><td><code>--registry ghcr</code></td><td><code>ghcr.io</code></td></tr>
+<tr><td><code>--name Org/App</code></td><td><code>org/app</code> (ECR e GHCR só aceitam minúsculas)</td></tr>
+<tr><td><code>--tag refs/tags/v1.2.0</code></td><td><code>v1.2.0</code></td></tr>
+<tr><td><code>--tag refs/heads/feature/login</code></td><td><code>feature-login</code> (<code>/</code> não é permitido em tag)</td></tr>
+<tr><td><code>--tag refs/pull/42/merge</code></td><td><code>pr-42</code></td></tr>
+</tbody></table></div>
+<p>Vale em <code>run</code>, <code>build</code>, <code>push</code>, <code>exists</code>, <code>inspect</code>, <code>scan</code> e <code>manifest</code>. No <code>build</code> e no <code>run</code>, o <code>-t</code> continua aceitando o endereço completo; com <code>--registry</code>, ele vira só a tag. No <code>manifest</code>, com <code>--registry</code> e <code>--name</code>, os argumentos são tags: <code>forja manifest --registry ecr --name org/app v1 v1-amd64 v1-arm64</code>.</p>
+
+<h3>19.1 Os registries ficam num arquivo, não no código</h3>
+<div class="code"><div class="file"><span>internal/registries/defaults/registries.yaml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo internal/registries/defaults/registries.yaml@@</code></pre></div>
+<p>A conta central é informada por <code>FORJA_ECR_ACCOUNT</code> (ou no arquivo), e não fica gravada no código. Um arquivo próprio entra com <code>--registries</code> ou <code>FORJA_REGISTRIES</code>. <code>FORJA_ECR_HOST</code> troca o host, e é assim que o teste aponta para o floci.</p>
+<div class="code"><div class="file"><span>internal/registries/registries.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/registries/registries.go@@</code></pre></div>
+
+<h3>19.2 Credencial do ECR: o SDK da AWS faz o trabalho</h3>
+<p>O forja chama <code>ecr:GetAuthorizationToken</code> com a cadeia padrão de credenciais do SDK Go da AWS. Conferido no código do SDK (<code>config/env_config.go</code> e <code>resolve_credentials.go</code>), ela cobre os três cenários da empresa sem nenhum código específico:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Onde o forja roda</th><th>De onde vem a credencial</th></tr></thead>
+<tbody>
+<tr><td>Pod no EKS</td><td><b>Pod Identity</b>: o agente injeta <code>AWS_CONTAINER_CREDENTIALS_FULL_URI</code> e <code>AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE</code> na ServiceAccount associada</td></tr>
+<tr><td>GitHub Actions</td><td><b>OIDC</b>: <code>aws-actions/configure-aws-credentials</code> assume a role e exporta as variáveis</td></tr>
+<tr><td>Teste local e CI</td><td><code>AWS_ENDPOINT_URL</code> aponta o mesmo código para o floci</td></tr>
+</tbody></table></div>
+<div class="code"><div class="file"><span>internal/registries/credentials.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/registries/credentials.go@@</code></pre></div>
+
+<h3>19.3 A armadilha: credencial só para o host certo</h3>
+<p>O caminho óbvio seria o campo <code>SystemContext.DockerAuthConfig</code> do containers/image. Só que ele vale para <b>todo</b> registry: o forja mandaria a senha do ECR para o Docker Hub no <code>FROM alpine</code>, e o pull anônimo quebraria. O forja grava um arquivo de credenciais com as que já existiam mais a do ECR, e aponta <code>REGISTRY_AUTH_FILE</code> (buildah, containers/image) e <code>DOCKER_CONFIG</code> (Syft) para ele. Assim, cada credencial só é usada no host dela.</p>
+<div class="code"><div class="file"><span>internal/registries/authfile.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/registries/authfile.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/cli/refs.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/refs.go@@</code></pre></div>
+
+<h3>19.4 Testando o ECR com o floci</h3>
+<p>O <a href="https://github.com/floci-io/floci">floci</a> (MIT, v2.1.0) emula a API do ECR em <code>localhost:4566</code> e guarda as imagens num <code>registry:2</code> de verdade, criado por ele. A montagem que funcionou precisou de três ajustes, cada um descoberto num erro:</p>
+<ol>
+<li><b>Rede dedicada.</b> Com o floci na rede padrão, o proxy dele não alcançava o registry de apoio (<code>503 Service Unavailable</code>). A documentação de rede dele pede uma rede própria: <code>--network floci-net -e FLOCI_SERVICES_DOCKER_NETWORK=floci-net</code>.</li>
+<li><b>Nome do host.</b> O ECR emulado responde em <code>000000000000.dkr.ecr.us-east-1.localhost:4566</code>; o forja em container recebe <code>--network host</code> e <code>--add-host ...localhost:127.0.0.1</code>.</li>
+<li><b>HTTP.</b> O emulador não tem TLS; <code>--tls-verify=false</code>. No ECR real, não.</li>
+</ol>
+<pre class="out"><code>@@saida ecr-floci.txt@@</code></pre>
+
+<h3>19.5 Uma diferença do emulador, provada</h3>
+<p>No teste, o <code>forja exists</code> respondeu "não existe" para uma tag que o <code>aws ecr describe-images</code> mostrava. O log do registry apontou a causa: <code>OCI manifest found, but accept header does not support OCI manifests</code>. O containers/image pede o manifesto com seis cabeçalhos <code>Accept</code>, um por formato. Com curl:</p>
+<pre class="out"><code>OCI primeiro, índice OCI por último (3 cabeçalhos) via floci:  404
+só o último (índice OCI):                                        404
+2 cabeçalhos (docker, OCI) via floci:                            200
+os mesmos 2 cabeçalhos direto no registry de apoio:              200</code></pre>
+<p>O proxy do floci repassa só o último cabeçalho <code>Accept</code>. O ECR real aceita todos, e é assim que podman, skopeo e buildah funcionam com ele. O forja não foi alterado por causa do emulador: no floci, o CI testa credencial, build, scan, push, <code>describe-images</code> e a imutabilidade do servidor; o <code>exists</code> e o <code>--immutable</code> são provados no GHCR.</p>
+
+<h3>19.6 No pipeline e no pod</h3>
+<div class="code"><div class="file"><span>examples/github-actions/forja-ecr.yml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo examples/github-actions/forja-ecr.yml@@</code></pre></div>
+<p>No EKS, o pod de produção (capítulo 17) usa <code>serviceAccountName: forja</code>. A associação de Pod Identity liga essa SA à role da conta central, e nenhum secret entra no pod. A replicação do ECR para as demais regiões é configurada uma vez na conta central, e o forja publica só em us-east-1. Ela é assíncrona: se um deploy em outra região puder rodar segundos depois do push, é preciso esperar a replicação (uma evolução natural: <code>--wait-replication</code>).</p>
+</section>
+

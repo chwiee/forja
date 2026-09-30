@@ -1,0 +1,61 @@
+<!-- ============================================================ 07 -->
+<section class="chapter" id="c7">
+<div class="ch-num">CAPÍTULO 07</div>
+<h2>Importando uma lib, em detalhe</h2>
+<p>"Importar a classe do buildah" são três passos: declarar o módulo no <code>go.mod</code>, baixar e verificar o código, e escrever o <code>import</code>. O <code>go get</code> faz os dois primeiros.</p>
+<h3>7.1 O que acontece num <code>go get</code></h3>
+<ol class="steps">
+<li><b>Resolve a versão.</b> <code>@v1.45.1</code> fixa; <code>@latest</code> pega a maior tag estável.</li>
+<li><b>Baixa pelo proxy</b> <code>proxy.golang.org</code> (<code>GOPROXY</code>), que guarda cópias imutáveis.</li>
+<li><b>Confere o hash</b> no banco público <code>sum.golang.org</code> (<code>GOSUMDB</code>). Se alguém reescrever uma tag no GitHub, o build falha.</li>
+<li><b>Grava</b> a versão no <code>go.mod</code> e os hashes de tudo no <code>go.sum</code>.</li>
+</ol>
+<pre class="out"><code>@@saida gomod-head.txt@@
+	...  (e 123 linhas // indirect)</code></pre>
+<p>Uma linha de <code>go get</code> do buildah trouxe mais de <b>430 módulos</b> (<code>go list -m all</code>). Syft, Grype e Gitleaks levaram o forja v0.3 a <b>983</b>, e a imagem de 53,9 MB para 142 MB. Cada um é código de terceiros que vai para dentro do seu binário. Por isso o capítulo 12 roda <code>govulncheck</code> e <code>go-licenses</code>.</p>
+<h3>7.2 Comandos do dia a dia</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Comando</th><th>O que faz</th></tr></thead>
+<tbody>
+<tr><td><code>go get mod@versão</code></td><td>Adiciona ou muda a versão de um módulo, inclusive indireto</td></tr>
+<tr><td><code>go mod tidy</code></td><td>Acerta o <code>go.mod</code> pelos imports reais</td></tr>
+<tr><td><code>go list -m all</code></td><td>Todos os módulos do build</td></tr>
+<tr><td><code>go mod why -m módulo</code></td><td>Quem puxou aquele módulo</td></tr>
+<tr><td><code>go doc pacote Símbolo</code></td><td>Assinatura e documentação no terminal</td></tr>
+<tr><td><code>go version -m binário</code></td><td>Dependências embutidas num binário pronto</td></tr>
+</tbody></table></div>
+<h3>7.3 Importe o pacote mais estreito</h3>
+<p>No primeiro protótipo, o uso de <code>alltransports.ParseImageName</code> puxou os transports de storage, SIF e OpenShift, cada um com suas dependências, e o build falhou com <code>missing go.sum entry</code> para módulos que o código nem usava. Trocar por <code>docker.ParseReference</code> resolveu. Antes de importar um pacote "guarda-chuva", procure o específico.</p>
+<h3>7.4 Build tags e arquivos por plataforma</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Tag / sufixo</th><th>Efeito no forja</th></tr></thead>
+<tbody>
+<tr><td><code>containers_image_openpgp</code></td><td>OpenPGP em Go puro no lugar da libgpgme (C). Obrigatória com cgo ligado</td></tr>
+<tr><td><code>exclude_graphdriver_btrfs</code></td><td>Remove o driver btrfs e a dependência dos headers dele</td></tr>
+<tr><td><code>_linux.go</code></td><td>O arquivo só entra no build Linux: é onde o buildah é importado</td></tr>
+<tr><td><code>//go:build !linux</code></td><td>O stub que faz o projeto compilar e testar no Windows</td></tr>
+</tbody></table></div>
+<h3>7.5 A pegadinha do <code>GOOS</code> com ferramentas</h3>
+<p>Para auditar o código Linux estando no Windows, a primeira tentativa foi esta:</p>
+<pre class="out"><code>GOOS=linux go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+exec: "...\go-build\...\govulncheck": executable file not found in %PATH%</code></pre>
+<p>O <code>GOOS=linux</code> também valeu para compilar o próprio govulncheck, que virou um binário Linux e não roda no Windows. O certo é instalar a ferramenta para o seu sistema e aplicar o <code>GOOS</code> só na análise:</p>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+GOOS=linux govulncheck -tags "containers_image_openpgp exclude_graphdriver_btrfs" ./...</code></pre></div>
+<p>No PowerShell, a segunda linha fica: <code>$env:GOOS="linux"; govulncheck ...; Remove-Item Env:GOOS</code>.</p>
+<h3>7.6 <code>replace</code> e <code>vendor</code></h3>
+<p><code>replace go.podman.io/buildah =&gt; ../estudos/buildah</code> aponta o módulo para um clone local, onde você pode colocar prints dentro do buildah. Nunca faça commit disso. <code>go mod vendor</code> copia as dependências para o repositório, o que permite builds sem internet e diffs auditáveis, ao custo de um repo bem maior.</p>
+<h3>7.7 O spike: quatro bibliotecas grandes no mesmo <code>go.mod</code></h3>
+<p>O maior risco do projeto era juntar buildah (ecossistema <code>go.podman.io</code>) com Syft e Grype (ecossistema Docker/containerd) num binário só. O spike foi um <code>go get</code> das quatro e um <code>go mod tidy</code>:</p>
+<pre class="out"><code>go get github.com/anchore/grype@latest github.com/anchore/syft@latest \
+       github.com/zricethezav/gitleaks/v8@latest github.com/anchore/clio@latest
+go: added github.com/anchore/grype v0.119.0
+go: added github.com/anchore/syft v1.52.0
+...
+go mod tidy                          (sem conflito)
+go vet ./...                         (Windows: ok)
+GOOS=linux CGO_ENABLED=0 go vet ./... (Linux: ok)
+docker build                         (estático com musl, amd64 e arm64: ok)</code></pre>
+<p>Não houve conflito: a seleção de versão mínima do Go (MVS) escolheu, para cada módulo compartilhado, a maior versão pedida, e todas eram compatíveis. Isso não é garantido; por isso o spike vem antes de escrever lógica. Se tivesse dado conflito, o plano B era rodar o Grype como binário separado.</p>
+</section>
+

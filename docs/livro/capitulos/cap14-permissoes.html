@@ -1,0 +1,46 @@
+<!-- ============================================================ 13 -->
+<section class="chapter" id="c14">
+<div class="ch-num">CAPÍTULO 14</div>
+<h2>Permissões mínimas <span class="badge ok">testado</span></h2>
+<p>O forja precisa de 12 capabilities, root dentro do container e 4 diretórios graváveis. Não precisa de <code>--privileged</code> nem de desligar o seccomp. A lista foi descoberta tirando permissões até quebrar, e cada linha abaixo é um teste real.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Configuração</th><th>Resultado</th><th>Por quê</th></tr></thead>
+<tbody>
+<tr><td>Nenhuma permissão extra</td><td>falha</td><td>mount do overlay: operation not permitted</td></tr>
+<tr><td><code>--privileged</code></td><td>funciona</td><td>tudo liberado (só para ver funcionar)</td></tr>
+<tr><td>padrão do Docker + <code>SYS_ADMIN</code></td><td>funciona</td><td>seccomp padrão mantido</td></tr>
+<tr><td><code>--cap-drop ALL</code> + <code>SYS_ADMIN</code></td><td>falha</td><td>mount: permission denied</td></tr>
+<tr><td>+ <code>SYS_CHROOT</code>, <code>SETUID</code>, <code>SETGID</code></td><td>falha</td><td>mount: permission denied</td></tr>
+<tr><td>+ <code>CHOWN</code>, <code>DAC_OVERRIDE</code>, <code>FOWNER</code></td><td>falha no RUN</td><td>error setting capabilities for process</td></tr>
+<tr><td><b>+ <code>FSETID</code>, <code>KILL</code>, <code>NET_BIND_SERVICE</code>, <code>SETFCAP</code>, <code>SETPCAP</code></b></td><td><b>funciona</b></td><td>conjunto mínimo</td></tr>
+<tr><td>mínimo + <code>--user 1000</code></td><td>falha</td><td>chown ... operation not permitted</td></tr>
+<tr><td>mínimo + <code>--read-only</code></td><td>falha</td><td>mkdir /run/containers: read-only</td></tr>
+<tr><td>+ tmpfs em <code>/run</code></td><td>falha</td><td>mkdir /var/cache/containers: read-only</td></tr>
+<tr><td><b>+ tmpfs em <code>/var/cache/containers</code></b></td><td><b>funciona</b></td><td>raiz somente leitura</td></tr>
+</tbody></table></div>
+<h3>Por que exatamente essas 12</h3>
+<p>O erro "error setting capabilities for process" revelou o motivo. Cada <code>RUN</code> roda com o conjunto padrão de capabilities do <code>containers.conf</code> (11 delas), e um processo não pode dar ao filho o que ele mesmo não tem. Por isso o mínimo é esse conjunto padrão mais <code>SYS_ADMIN</code>, que é do próprio forja, para montar.</p>
+<pre class="out"><code>--cap-drop ALL
+--cap-add SYS_ADMIN                                     (o forja: mount)
+--cap-add CHOWN DAC_OVERRIDE FOWNER FSETID KILL
+          NET_BIND_SERVICE SETFCAP SETGID SETPCAP
+          SETUID SYS_CHROOT                             (o que os RUN recebem)</code></pre>
+<h3>Diretórios graváveis</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Caminho</th><th>Uso</th><th>No Docker</th><th>No Kubernetes</th></tr></thead>
+<tbody>
+<tr><td><code>/workspace</code></td><td>Dockerfile e contexto do usuário</td><td><code>-v "${PWD}:/workspace"</code></td><td>emptyDir preenchido por um git clone</td></tr>
+<tr><td><code>/var/tmp</code></td><td>overlay do contexto (não pode ser overlay)</td><td>volume</td><td>emptyDir</td></tr>
+<tr><td><code>/var/lib/containers</code></td><td>camadas das imagens</td><td>volume (reaproveita cache)</td><td>emptyDir</td></tr>
+<tr><td><code>/run</code></td><td>estado de execução do storage</td><td>tmpfs</td><td>emptyDir em memória</td></tr>
+<tr><td><code>/var/cache/containers</code></td><td>cache de blobs</td><td>tmpfs</td><td>emptyDir</td></tr>
+</tbody></table></div>
+<div class="callout risk"><span class="tag">SYS_ADMIN é muito poder</span><p>Com <code>SYS_ADMIN</code> e root, um Dockerfile malicioso tem mais chance de escapar do container. Duas defesas: rodar num <b>user namespace</b> (<code>hostUsers: false</code> no Kubernetes), onde o root do container é um usuário comum no nó, e usar runners <b>efêmeros e dedicados</b> a build de imagem. O user namespace não foi testado aqui (exige um cluster Kubernetes 1.33+); ele é parte do seu desafio.</p></div>
+<div class="callout risk"><span class="tag">AppArmor fora do Docker Desktop</span><p>O kernel do Docker Desktop não tem AppArmor, então os testes aqui não passaram por ele. Em hosts Ubuntu (runners do GitHub, nós Kubernetes), o perfil padrão <code>docker-default</code> bloqueia mount mesmo com <code>SYS_ADMIN</code>. Por isso os workflows e o pod dos capítulos 16 e 17 usam <code>apparmor=unconfined</code>. <span class="badge todo">não testado</span></p></div>
+<h3>Duas exigências que só apareceram no CI</h3>
+<ul>
+<li><b>Limite de arquivos abertos.</b> O forja passa aos <code>RUN</code> o teto atual de <code>nofile</code> e <code>nproc</code> do container, e não o 1.048.576 que o buildah usaria. Assim ele funciona com o teto padrão do Docker nos runners (65.536) sem pedir <code>CAP_SYS_RESOURCE</code>. Se um build precisar de mais arquivos abertos, aumente o teto do container (<code>--ulimit</code> no Docker, ou a configuração do runtime no Kubernetes), e não as capabilities.</li>
+<li><b>Temporários.</b> A imagem define <code>TMPDIR=/var/tmp</code>. Com a raiz somente leitura, o <code>/tmp</code> não é gravável, e o download do banco de CVEs falhava com a mensagem enganosa <code>database does not exist</code>.</li>
+</ul>
+</section>
+

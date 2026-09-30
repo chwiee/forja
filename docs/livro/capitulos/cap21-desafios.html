@@ -1,0 +1,37 @@
+<!-- ============================================================ 18 -->
+<section class="chapter" id="c21">
+<div class="ch-num">CAPÍTULO 21</div>
+<h2>Os desafios, resolvidos</h2>
+<p>A 3ª edição terminava com quatro níveis de desafio. Nesta edição eles foram resolvidos e provados, no seu PC e no CI. O que ainda depende de algo que só vocês têm está marcado como "fica com o time".</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Nível</th><th>Desafio</th><th>Status</th><th>Onde está a prova</th></tr></thead>
+<tbody>
+<tr><td>2</td><td>RUN nativo num nó arm64 real</td><td><span class="badge ok">resolvido</span></td><td>job <code>e2e (arm64)</code>: <code>rodando em aarch64 | buildado em aarch64</code> (cap. 16, 18)</td></tr>
+<tr><td>2</td><td>Imagem multi-arch do forja no GHCR, assinada</td><td><span class="badge ok">resolvido</span></td><td>job <code>image</code>: <code>ghcr.io/chwiee/forja</code> (amd64 + arm64), cosign com chave própria, verificada no e2e (cap. 18)</td></tr>
+<tr><td>2</td><td>Workflows no runner real; questão do AppArmor</td><td><span class="badge ok">resolvido</span></td><td><code>--security-opt apparmor=unconfined</code> + 12 caps funcionaram em ubuntu-24.04 e ubuntu-24.04-arm (cap. 18)</td></tr>
+<tr><td>2</td><td>Pod com <code>hostUsers: false</code></td><td><span class="badge ok">resolvido</span></td><td>kind do Docker Desktop, fase <code>Succeeded</code>; no kind do CI, sem <code>hostUsers</code> por limitação do aninhamento (cap. 17)</td></tr>
+<tr><td>3</td><td>SBOM + CVEs (Syft + Grype)</td><td><span class="badge ok">resolvido</span></td><td>isca de CVEs: 92 achados, igual ao Grype oficial (cap. 11)</td></tr>
+<tr><td>3</td><td>Secrets (Gitleaks) + ENV/ARG/USER</td><td><span class="badge ok">resolvido</span></td><td>isca de secret: token pego no arquivo e no histórico, sem vazar no log (cap. 11)</td></tr>
+<tr><td>3</td><td>Política com pesos, tetos e exceções com dono e validade</td><td><span class="badge ok">resolvido</span></td><td><code>policy.yaml</code> + 3 testes de política (cap. 11, 12)</td></tr>
+<tr><td>3</td><td>Saída em tabela, JSON e SARIF</td><td><span class="badge ok">resolvido</span></td><td><code>-o json</code>, <code>--sarif</code>; SARIF como artefato do CI (cap. 11, 18)</td></tr>
+<tr><td>3</td><td>Scan por arquitetura em multi-arch</td><td><span class="badge ok">resolvido</span></td><td><code>TestScanMultiArchScansEachPlatform</code> + teste real com 2 arquiteturas (cap. 11)</td></tr>
+<tr><td>3</td><td>Spike: 4 bibliotecas juntas, estático, 2 arquiteturas</td><td><span class="badge ok">resolvido</span></td><td>sem conflito no <code>go.mod</code>; <code>xx-verify --static</code> nas duas (cap. 7, 13)</td></tr>
+<tr><td>4</td><td><code>forja run</code>: exists → build → scan → gate → push</td><td><span class="badge ok">resolvido</span></td><td><code>TestRunStopsAtGate</code> + e2e (cap. 11, 18)</td></tr>
+<tr><td>4</td><td>Imagens-isca com resultado esperado</td><td><span class="badge ok">resolvido</span></td><td><code>testdata/iscas</code>, testadas a cada push em amd64 e arm64 (cap. 18)</td></tr>
+<tr><td>4</td><td>Comparação com o Falcon (bake-off)</td><td><span class="badge todo">fica com o time</span></td><td>precisa de acesso ao Falcon: rode <code>forja scan --remote</code> nas mesmas imagens que o Falcon avalia e compare achados e falsos positivos</td></tr>
+<tr><td>—</td><td>ECR na conta central (<code>--registry ecr</code>, Pod Identity)</td><td><span class="badge ok">resolvido</span></td><td>testado no floci: credencial pelo SDK, push, <code>describe-images</code> e imutabilidade do servidor; job <code>ecr</code> no CI (cap. 19)</td></tr>
+<tr><td>—</td><td>Esperar a replicação para as outras regiões</td><td><span class="badge todo">próxima versão</span></td><td>o floci não emula o status de replicação; precisa de conta AWS real</td></tr>
+</tbody></table></div>
+<h3>Como usar este livro daqui para frente</h3>
+<ol class="steps">
+<li><b>Refaça o forja digitando</b>, capítulo a capítulo, e compare com <a href="https://github.com/chwiee/forja">chwiee/forja</a>. O objetivo é saber fazer, e não só ter o código.</li>
+<li><b>Mude algo e deixe o CI provar.</b> Por exemplo, uma regra nova na política, ou uma nova isca em <code>testdata/</code> com um passo no job <code>e2e</code>. Um push, e o CI responde em amd64, arm64 e Kubernetes.</li>
+<li><b>Peça a revisão de mentor</b> quando quiser:</li>
+</ol>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-text">Claude, modo mentor: revisa minha mudança no forja.
+Onde está: github.com/chwiee/forja, branch minha-mudanca (ou commit abc123)
+O que fiz e por quê: ...
+Onde fiquei em dúvida: ...</code></pre></div>
+<p>Na revisão eu rodo os testes e o CI, leio o código, classifico cada ponto como bloqueante, importante ou sugestão, e faço perguntas antes de dar respostas.</p>
+</section>
+

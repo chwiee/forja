@@ -3,7 +3,7 @@
 # A pasta atual vira /workspace; as credenciais do "docker login" são reusadas.
 #
 #   ci/forja.sh run -t ghcr.io/org/app:1.0 .
-#   FORJA_IMAGE=ghcr.io/chwiee/forja:0.3.0 ci/forja.sh scan --remote ghcr.io/org/app:1.0
+#   FORJA_IMAGE=ghcr.io/chwiee/forja:0.4.1 ci/forja.sh scan --remote ghcr.io/org/app:1.0
 #   FORJA_DOCKER_OPTS="-e AWS_REGION=us-east-1" ci/forja.sh run --registry ecr --name org/app -t v1 .
 set -eu
 

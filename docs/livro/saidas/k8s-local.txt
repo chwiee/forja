@@ -1,0 +1,17 @@
+sha256:e762002965dd45dd955c6b7d9ae8e4207cb50da3ab6007ca250a8088ab611c64
+Image: "forja:k8s" with ID "sha256:e762002965dd45dd955c6b7d9ae8e4207cb50da3ab6007ca250a8088ab611c64" not yet present on node "forja-control-plane", loading...
+deployment.apps/registry unchanged
+service/registry unchanged
+configmap/app unchanged
+pod/forja-build created
+deployment.apps/registry condition met
+fase: Succeeded
+[2/5] build
+[3/5] scan
+NOTA  92/100 (mínimo 70)  APROVADA   pacotes: 18  achados: 4  exceções: 0
+[4/5] gate: aprovada
+[5/5] push
+PUSH OK   registry.default.svc.cluster.local:5000/app:1.0  sha256:9db0c5a9d5b9a56c97a2e31f6853c0f4229b8765d6cd2f70bf68628c4658c939
+{"terminated":{"containerID":"containerd://0b950ee0bd48047ae19bb69b311e20aadd7ecff2fd203d0fcd39b085abcb3a33","exitCode":0,"finishedAt":"2026-09-29T19:56:59Z","reason":"Completed","startedAt":"2026-09-29T19:55:43Z"}}
+
+[exited with code 0]

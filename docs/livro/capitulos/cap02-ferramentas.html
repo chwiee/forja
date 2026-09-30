@@ -1,0 +1,36 @@
+<!-- ============================================================ 02 -->
+<section class="chapter" id="c2">
+<div class="ch-num">CAPÍTULO 02</div>
+<h2>Ferramentas e repositórios</h2>
+<p>O forja v0.3 usa sete bibliotecas principais, que trazem 983 módulos no total. As outras ferramentas entram no build da imagem, no pipeline ou nos testes. Versões e licenças conferidas em 29/09/2026.</p>
+</section>
+</article>
+<div class="table-wrap wide"><table>
+<thead><tr><th>Ferramenta</th><th>Papel</th><th>Como entra</th><th>Módulo Go / uso</th><th>Licença</th><th>Versão</th></tr></thead>
+<tbody>
+<tr><td><a href="https://github.com/containers/buildah">buildah</a></td><td>build, push, export OCI</td><td>lib</td><td><code>go.podman.io/buildah</code></td><td>Apache-2.0</td><td>v1.45.1</td></tr>
+<tr><td><a href="https://github.com/containers/container-libs">container-libs</a></td><td>registry, storage, rede, manifest list</td><td>lib</td><td><code>go.podman.io/image/v5</code>, <code>/storage</code>, <code>/common</code></td><td>Apache-2.0</td><td>image v5.41.2</td></tr>
+<tr><td><a href="https://github.com/spf13/cobra">Cobra</a></td><td>comandos e flags</td><td>lib</td><td><code>github.com/spf13/cobra</code></td><td>Apache-2.0</td><td>v1.10.2</td></tr>
+<tr><td><a href="https://github.com/anchore/syft">Syft</a></td><td>catálogo de pacotes (SBOM)</td><td>lib</td><td><code>github.com/anchore/syft</code></td><td>Apache-2.0</td><td>v1.52.0</td></tr>
+<tr><td><a href="https://github.com/anchore/grype">Grype</a></td><td>CVEs</td><td>lib</td><td><code>github.com/anchore/grype</code></td><td>Apache-2.0</td><td>v0.119.0</td></tr>
+<tr><td><a href="https://github.com/gitleaks/gitleaks">Gitleaks</a></td><td>secrets hardcoded</td><td>lib</td><td><code>github.com/zricethezav/gitleaks/v8</code></td><td>MIT</td><td>v8.30.1</td></tr>
+<tr><td><a href="https://pkg.go.dev/golang.org/x/crypto/x509roots/fallback">x509roots/fallback</a></td><td>certificados CA embutidos</td><td>lib</td><td><code>golang.org/x/crypto/x509roots/fallback</code></td><td>BSD-3-Clause</td><td>pseudo-versão</td></tr>
+<tr><td><a href="https://github.com/GoogleContainerTools/distroless">distroless</a></td><td>imagem base do forja</td><td>imagem</td><td><code>gcr.io/distroless/static-debian13</code></td><td>Apache-2.0</td><td>debian13</td></tr>
+<tr><td><a href="https://github.com/tonistiigi/xx">xx</a></td><td>compilação cruzada com cgo</td><td>imagem de build</td><td><code>tonistiigi/xx</code></td><td>MIT</td><td>1.6.1</td></tr>
+<tr><td><a href="https://github.com/sigstore/cosign">cosign</a></td><td>assinatura da imagem do forja</td><td>container no CI</td><td><code>ghcr.io/sigstore/cosign/cosign</code></td><td>Apache-2.0</td><td>v3.1.3</td></tr>
+<tr><td><a href="https://github.com/kubernetes-sigs/kind">kind</a></td><td>cluster Kubernetes do teste</td><td>binário no CI</td><td><code>kindest/node:v1.36.4</code></td><td>Apache-2.0</td><td>v0.33.0</td></tr>
+<tr><td><a href="https://github.com/distribution/distribution">distribution</a></td><td>registry do laboratório</td><td>container</td><td><code>registry:3</code></td><td>Apache-2.0</td><td>v3.1.2</td></tr>
+<tr><td><a href="https://github.com/golang/vuln">govulncheck</a></td><td>CVEs no código Go</td><td>ferramenta</td><td><code>golang.org/x/vuln</code></td><td>BSD-3-Clause</td><td>v1.1.4</td></tr>
+<tr><td><a href="https://github.com/google/go-licenses">go-licenses</a></td><td>licenças das deps</td><td>ferramenta</td><td><code>github.com/google/go-licenses/v2</code></td><td>Apache-2.0</td><td>v2.0.1</td></tr>
+</tbody></table></div>
+<article>
+<div class="callout"><span class="tag">Detalhes que pegam</span>
+<ul>
+<li>O buildah mudou de endereço: o repositório é <code>github.com/containers/buildah</code>, mas o módulo Go é <code>go.podman.io/buildah</code>. Confira sempre a primeira linha do <code>go.mod</code> do repo.</li>
+<li>O módulo do Gitleaks ainda é <code>github.com/zricethezav/gitleaks/v8</code>, apesar de o repositório ter mudado.</li>
+<li>O Grype está em <code>v0.x</code>: a API pode quebrar em qualquer versão menor (cap. 20).</li>
+<li>O banco de CVEs do Grype é um arquivo à parte, baixado em tempo de execução de <code>grype.anchore.io</code>. Sem internet, use <code>--skip-cves</code> ou um mirror interno.</li>
+</ul></div>
+</article>
+<article>
+

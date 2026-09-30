@@ -6,6 +6,7 @@
 #   4. manifest  junta as imagens das duas arquiteturas num nome só
 #   5. k8s       o forja num pod do Kubernetes (kind) com as permissões mínimas
 #   6. ecr       --registry ecr contra o ECR emulado pelo floci (SDK da AWS)
+#   7. livro     gera o Manual da Forja a partir do código (independente)
 name: ci
 
 on:
@@ -211,3 +212,14 @@ jobs:
           grep -E "erro|immutable" saida2.txt | head -3
           test "$code" -ne 0
           grep -q "cannot be overwritten because the tag is immutable" saida2.txt
+
+  livro:
+    # O Manual da Forja é gerado do código real: se um arquivo citado sumir, falha.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docs/livro/build.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-da-forja
+          path: docs/livro/dist/manual-da-forja.html

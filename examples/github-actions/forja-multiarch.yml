@@ -8,7 +8,6 @@ permissions:
   contents: read
   packages: write
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
   # permissões mínimas do forja (Manual da Forja: "Permissões mínimas") + credenciais do docker login
   FORJA_OPTS: >-
     --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER
@@ -29,7 +28,8 @@ jobs:
       - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: forja run (${{ matrix.arch }})
         run: |
-          docker run --rm $FORJA_OPTS -v "$PWD:/workspace" ghcr.io/chwiee/forja:0.3.0 run -t "$IMAGE:${{ github.ref_name }}-${{ matrix.arch }}" .
+          docker run --rm $FORJA_OPTS -v "$PWD:/workspace" ghcr.io/chwiee/forja:0.4.1 \
+            run --registry ghcr --name "${{ github.repository }}" --tag "${{ github.ref_name }}-${{ matrix.arch }}" .
   manifest:
     needs: imagem
     runs-on: ubuntu-24.04
@@ -38,4 +38,5 @@ jobs:
       - name: juntar amd64 + arm64
         run: |
           T="${{ github.ref_name }}"
-          docker run --rm $FORJA_OPTS ghcr.io/chwiee/forja:0.3.0 manifest "$IMAGE:$T" "$IMAGE:$T-amd64" "$IMAGE:$T-arm64"
+          docker run --rm $FORJA_OPTS ghcr.io/chwiee/forja:0.4.1 \
+            manifest --registry ghcr --name "${{ github.repository }}" "$T" "$T-amd64" "$T-arm64"

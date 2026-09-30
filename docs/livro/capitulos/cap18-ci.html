@@ -1,0 +1,59 @@
+<!-- ============================================================ CI -->
+<section class="chapter" id="c18">
+<div class="ch-num">CAPÍTULO 18</div>
+<h2>O CI do forja no GitHub <span class="badge ok">testado</span></h2>
+<p>O repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a> (privado) tem um único workflow, com cinco jobs em sequência. Cada push na <code>main</code> prova de novo tudo o que este livro afirma, e em hardware real.</p>
+<div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  t["1. test&lt;br/&gt;vet, testes, govulncheck"] --&gt; i["2. image&lt;br/&gt;buildx amd64+arm64&lt;br/&gt;push GHCR + cosign"]
+  i --&gt; e1["3. e2e amd64&lt;br/&gt;ubuntu-24.04"]
+  i --&gt; e2["3. e2e arm64&lt;br/&gt;ubuntu-24.04-arm"]
+  i --&gt; k["5. k8s&lt;br/&gt;pod no kind"]
+  e1 --&gt; m["4. manifest&lt;br/&gt;amd64 + arm64"]
+  e2 --&gt; m
+</pre>
+</div>
+<div class="table-wrap"><table>
+<thead><tr><th>Job</th><th>O que prova</th></tr></thead>
+<tbody>
+<tr><td><code>test</code></td><td>Código compila no Linux com cgo, os testes passam, nenhuma CVE alcançável</td></tr>
+<tr><td><code>image</code></td><td>A imagem multi-arch do forja é construída, publicada em <code>ghcr.io/chwiee/forja</code> e assinada</td></tr>
+<tr><td><code>e2e</code></td><td>Em amd64 <b>e arm64 nativo</b>: assinatura confere; um Dockerfile com <code>RUN</code> é buildado, escaneado e publicado; a imagem roda na arquitetura certa; a isca de secret reprova (exit 3), o token não aparece no log e nada é publicado; a isca de CVEs reprova</td></tr>
+<tr><td><code>manifest</code></td><td>As imagens das duas arquiteturas viram um nome só</td></tr>
+<tr><td><code>k8s</code></td><td>O forja roda num pod com o <code>securityContext</code> mínimo e publica num registry do cluster</td></tr>
+</tbody></table></div>
+
+<h3>18.1 O workflow</h3>
+<div class="code"><div class="file"><span>.github/workflows/ci.yml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo .github/workflows/ci.yml@@</code></pre></div>
+<p>Duas peças deixam o YAML curto. <code>ci/forja.sh</code> embute as 12 capabilities e os volumes. <code>ci/cosign.sh</code> roda o cosign oficial em container, sem instalar nada no runner:</p>
+<div class="code"><div class="file"><span>ci/forja.sh</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-bash">@@arquivo ci/forja.sh@@</code></pre></div>
+<div class="code"><div class="file"><span>ci/cosign.sh</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-bash">@@arquivo ci/cosign.sh@@</code></pre></div>
+
+<h3>18.2 Assinatura sem log público</h3>
+<p>O modo <i>keyless</i> do cosign grava a identidade do workflow (inclusive o nome do repositório) no Rekor, um log público. Para um repositório privado isso vaza informação, então o forja assina com <b>chave própria e sem log</b>. A chave privada e a senha ficam nos secrets <code>COSIGN_PRIVATE_KEY</code> e <code>COSIGN_PASSWORD</code>; a pública está versionada em <code>cosign.pub</code>. Uma lição do caminho: no cosign v3, <code>--tlog-upload=false</code> sozinho é recusado; é preciso também <code>--use-signing-config=false</code>. Testado aqui antes do CI: a assinatura confere com a chave certa e é recusada com outra chave (<code>accepted signatures do not match threshold</code>).</p>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">docker run --rm -v "$PWD:/w" -w /w ghcr.io/sigstore/cosign/cosign:v3.1.3 \
+  verify --key cosign.pub --insecure-ignore-tlog ghcr.io/chwiee/forja:0.3.0</code></pre></div>
+
+<h3>18.3 O que o CI encontrou que o Windows não mostrava</h3>
+<p>Tudo passava no Windows e no Docker Desktop. O CI achou três erros, e cada um foi reproduzido aqui antes de ser corrigido:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Onde</th><th>Erro</th><th>Causa</th><th>Correção</th></tr></thead>
+<tbody>
+<tr><td>job <code>test</code></td><td><code>btrfs/version.h: No such file or directory</code></td><td>só no Linux <b>com</b> cgo o driver btrfs é compilado</td><td>tag <code>exclude_graphdriver_btrfs</code> no vet e nos testes (cap. 12.4)</td></tr>
+<tr><td>job <code>e2e</code>, amd64 e arm64</td><td><code>setting "RLIMIT_NOFILE" limit to soft=1048576 ... (was soft=65536,hard=65536): operation not permitted</code></td><td>o buildah dá a cada <code>RUN</code> <code>nofile</code>=1048576 (<code>run_linux.go</code>, <code>addRlimits</code>); subir acima do teto exige <code>CAP_SYS_RESOURCE</code>. O Docker Desktop já tem teto 1048576, por isso não aparecia</td><td>o forja passa o teto atual (<code>currentUlimits</code>) + teste; reproduzido com <code>docker run --ulimit nofile=65536:65536</code></td></tr>
+<tr><td>antecipado para o <code>k8s</code></td><td><code>carregando banco de CVEs: database does not exist</code></td><td>com a raiz somente leitura, o Grype baixa o banco num temporário em <code>/tmp</code>, que não é gravável; a mensagem engana</td><td><code>ENV TMPDIR=/var/tmp</code> na imagem; reproduzido com <code>docker run --read-only</code></td></tr>
+</tbody></table></div>
+<p>O erro do limite de arquivos também trouxe uma boa notícia: no runner arm64 ele aconteceu <b>depois</b> do reexec do buildah. Ou seja, o forja arm64 nativo passou exatamente pelo ponto que falhava na emulação do capítulo 16.4.</p>
+<p>Uma lição de ferramenta: o <code>git push</code> ficava minutos parado no Windows porque o Git Credential Manager abria uma janela escondida. Com o helper do GitHub CLI (<code>git config credential.helper '!gh auth git-credential'</code>), o push levou 3 segundos.</p>
+
+<h3>18.4 A execução</h3>
+<pre class="out"><code>@@saida ci-run.txt@@</code></pre>
+
+<h3>18.5 Para os times de aplicação</h3>
+<p>Os exemplos em <code>examples/github-actions/</code> usam <code>forja run</code>, com gate:</p>
+<div class="code"><div class="file"><span>examples/github-actions/forja.yml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo examples/github-actions/forja.yml@@</code></pre></div>
+<div class="code"><div class="file"><span>examples/github-actions/forja-multiarch.yml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo examples/github-actions/forja-multiarch.yml@@</code></pre></div>
+<div class="callout risk"><span class="tag">Imagem privada para outros repositórios</span><p>O pacote <code>ghcr.io/chwiee/forja</code> nasce privado, ligado ao repositório. Para outros repositórios usarem, dê acesso em <i>Package settings → Manage Actions access</i>, ou torne o pacote visível para a organização. A aba Security com o SARIF, em repositório privado, exige GitHub Advanced Security.</p></div>
+</section>
+

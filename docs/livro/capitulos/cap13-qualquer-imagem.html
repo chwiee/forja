@@ -1,0 +1,40 @@
+<!-- ============================================================ 12 -->
+<section class="chapter" id="c13">
+<div class="ch-num">CAPÍTULO 13</div>
+<h2>Uma imagem, qualquer imagem, duas arquiteturas <span class="badge ok">testado</span></h2>
+<p>O forja final é um binário <b>estático com cgo</b>, linkado com a musl, que não depende de nada da imagem onde é colocado. A imagem oficial é multi-arch (amd64 e arm64) e tem 142 MB: eram 53,9 MB antes de o scan trazer Syft, Grype e Gitleaks. O mesmo binário, copiado para Ubuntu 22.04, Alpine, Debian slim, distroless static e até <code>scratch</code>, buildou, publicou e gerou imagens que rodam.</p>
+
+<h3>13.1 Por que estático com musl</h3>
+<p>O capítulo 10 mostrou que o buildah precisa de cgo. A primeira solução foi compilar contra a glibc do Debian 13 e usar <code>distroless/base</code>. Funcionou, mas prendeu o binário a imagens com glibc 2.41 ou mais nova: no Ubuntu 24.04 (glibc 2.39) ou no 22.04 (2.35), ele sairia com <code>GLIBC_2.41 not found</code>. Isso não é limitação do buildah; é consequência de linkar dinamicamente.</p>
+<p>A saída é linkar a libc <b>para dentro</b> do binário. A glibc não gosta de ser linkada estaticamente (funções de rede e de usuários tentam carregar bibliotecas em tempo de execução); a musl, a libc do Alpine, foi feita para isso. Por isso o estágio de build usa <code>golang:alpine</code>:</p>
+<pre class="out"><code>CGO_ENABLED=1 go build -ldflags "-linkmode external -extldflags '-static'" ...
+/out/forja: ELF 64-bit LSB executable, x86-64, statically linked, stripped</code></pre>
+
+<h3>13.2 Configuração embutida</h3>
+<p>Binário estático resolve a libc, mas o forja ainda lia três coisas da imagem: <code>policy.json</code>, <code>registries.conf</code> e os certificados CA. Numa imagem sem eles (<code>debian-slim</code> não tem certificados; <code>scratch</code> não tem nada) o build falhava. Agora os três vêm dentro do binário:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>O que</th><th>Como</th><th>Se a imagem tiver o arquivo</th></tr></thead>
+<tbody>
+<tr><td><code>policy.json</code></td><td><code>go:embed</code>, gravado em <code>/var/tmp/forja-defaults</code> na hora</td><td>o da imagem vence</td></tr>
+<tr><td><code>registries.conf</code></td><td>idem</td><td>o da imagem vence</td></tr>
+<tr><td>Certificados CA</td><td><code>golang.org/x/crypto/x509roots/fallback</code></td><td>os da imagem vencem</td></tr>
+</tbody></table></div>
+<div class="code"><div class="file"><span>internal/build/defaults_linux.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/build/defaults_linux.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/build/defaults/policy.json</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-json">@@arquivo internal/build/defaults/policy.json@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/build/defaults/registries.conf</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-plaintext">@@arquivo internal/build/defaults/registries.conf@@</code></pre></div>
+<p>O <code>go:embed</code> só enxerga arquivos dentro da pasta do pacote (ou abaixo dela). Por isso os arquivos moraram em <code>internal/build/defaults/</code>, e não em <code>deploy/</code>.</p>
+
+<h3>13.3 O Dockerfile multi-arch</h3>
+<p>Compilar cgo para arm64 num PC amd64 exige um compilador C cruzado. O <a href="https://github.com/tonistiigi/xx">tonistiigi/xx</a> resolve isso: o estágio de build roda na arquitetura da sua máquina (<code>$BUILDPLATFORM</code>), e o <code>xx-apk</code> instala o <code>gcc</code> e a <code>musl-dev</code> da arquitetura de <b>destino</b>. O <code>xx-verify --static</code> quebra o build se o binário não sair estático. A alternativa, emular o compilador inteiro no QEMU, é várias vezes mais lenta.</p>
+<div class="code"><div class="file"><span>Dockerfile</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-plaintext">@@arquivo Dockerfile@@</code></pre></div>
+<p>Para uso local, <code>docker build -t forja:dev .</code> gera só a arquitetura da sua máquina. Para publicar as duas:</p>
+<pre class="out"><code>@@saida buildx.txt@@</code></pre>
+
+<h3>13.4 A prova: o mesmo binário em cinco imagens</h3>
+<p>Cada linha abaixo é o binário de <code>forja:static</code> copiado para uma imagem diferente, fazendo build completo do Dockerfile do laboratório (com <code>RUN apk add</code>), push para o registry local, e a imagem resultante rodando:</p>
+<pre class="out"><code>@@saida matrix.txt@@</code></pre>
+<p>Para colocar o forja em qualquer imagem, inclusive a do runner, basta uma linha:</p>
+<div class="code"><div class="file"><span>Dockerfile de qualquer imagem</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-plaintext">@@saida Dockerfile.any@@</code></pre></div>
+<p>Com uma imagem multi-arch na origem, o <code>COPY --from</code> pega o binário da arquitetura que está sendo buildada.</p>
+</section>
+

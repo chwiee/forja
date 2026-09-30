@@ -1,0 +1,26 @@
+<!-- ============================================================ 09 -->
+<section class="chapter" id="c9">
+<div class="ch-num">CAPÍTULO 09</div>
+<h2>O motor: build e push com buildah <span class="badge ok">testado</span></h2>
+<p>O pacote <code>internal/build</code> é a única porta do buildah no forja. O resto do código conhece só a interface <code>Engine</code>.</p>
+<h3>9.1 O contrato (todas as plataformas)</h3>
+<div class="code"><div class="file"><span>internal/build/build.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/build/build.go@@</code></pre></div>
+<h3>9.2 A implementação real (só Linux)</h3>
+<p>Repare nas escolhas de <code>BuildOptions</code>. Cada uma resolve um problema do capítulo 10: <code>IsolationChroot</code> dispensa o runc, <code>NamespaceOptions</code> + <code>NetworkInterface</code> dispensam o netavark. Com <code>Platforms</code> preenchido, o build vira multi-arch e gera um manifest list; o <code>Push</code> detecta isso e publica todas as arquiteturas (capítulo 16). O <code>systemContext</code> usa a configuração embutida do capítulo 13.</p>
+<div class="code"><div class="file"><span>internal/build/build_linux.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/build/build_linux.go@@</code></pre></div>
+<h3>9.3 A rede "de mentira"</h3>
+<p>O buildah exige uma implementação da interface <code>ContainerNetwork</code> (13 métodos), mesmo quando os <code>RUN</code> usam a rede do host. Implementar a interface inteira, com erros claros, é mais seguro do que embutir a interface num struct e torcer para os métodos não chamados nunca serem usados (isso daria panic). A linha <code>var _ nettypes.ContainerNetwork = hostNetwork{}</code> faz o compilador conferir o contrato.</p>
+<div class="code"><div class="file"><span>internal/build/hostnet_linux.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/build/hostnet_linux.go@@</code></pre></div>
+<h3>9.4 O stub para Windows e macOS</h3>
+<div class="code"><div class="file"><span>internal/build/build_other.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/build/build_other.go@@</code></pre></div>
+<h3>9.5 Os comandos <code>build</code> e <code>push</code></h3>
+<div class="code"><div class="file"><span>internal/cli/build.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/build.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/cli/push.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/push.go@@</code></pre></div>
+<h3>9.6 O <code>main</code></h3>
+<p><code>build.InitReexec()</code> tem que ser a primeira linha. O buildah re-executa o próprio binário do forja para rodar etapas isoladas, e é ali que o processo filho desvia do caminho normal.</p>
+<div class="code"><div class="file"><span>cmd/forja/main.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo cmd/forja/main.go@@</code></pre></div>
+<h3>9.7 A ajuda gerada</h3>
+<pre class="out"><code>@@saida help.txt@@</code></pre>
+<pre class="out"><code>@@saida help-build.txt@@</code></pre>
+</section>
+

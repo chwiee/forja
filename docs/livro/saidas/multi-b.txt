@@ -1,0 +1,11 @@
+(nó amd64)  forja build -f Dockerfile.norun -t registry:5000/multi:3.0-amd64 --push .
+            PUSH OK   registry:5000/multi:3.0-amd64  sha256:72116c2d107a...
+(nó arm64)  forja build -f Dockerfile.norun -t registry:5000/multi:3.0-arm64 --push .
+            PUSH OK   registry:5000/multi:3.0-arm64  sha256:f3a084112c16...
+(qualquer)  forja manifest registry:5000/multi:3.0 registry:5000/multi:3.0-amd64 registry:5000/multi:3.0-arm64
+            MANIFEST OK  registry:5000/multi:3.0  sha256:df25e58503612ea30d2663b6c4a59d5c00f22642b50ef6fc31a1ad567a5addaa  (2 imagens)
+
+$ docker run --rm --platform linux/amd64 localhost:5000/multi:3.0
+rodando em x86_64
+$ docker run --rm --platform linux/arm64 localhost:5000/multi:3.0
+rodando em aarch64
