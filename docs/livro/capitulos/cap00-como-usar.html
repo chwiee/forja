@@ -2,17 +2,41 @@
 <section class="chapter" id="c0">
 <div class="ch-num">CAPÍTULO 00</div>
 <h2>Como usar este livro</h2>
-<p>Este livro constrói o <b>forja v0.3</b>, que está em produção no repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a>. É um CLI que recebe o Dockerfile da aplicação e executa <code>exists → build → scan → gate → push</code>: builda com a biblioteca do buildah, escaneia CVEs (Syft e Grype), secrets (Gitleaks) e configuração, dá uma nota de 0 a 100, e só publica se a imagem passar. É um binário estático que roda em qualquer imagem Linux, em amd64 e arm64, sem Docker nem daemon dentro dele. A imagem oficial é assinada com cosign.</p>
-<p>Tudo o que aparece como <span class="badge ok">testado</span> foi compilado e executado no seu PC em 29/09/2026, e as saídas são reais. Além do seu PC, o CI do repositório repete os testes a cada push, em runners amd64 e <b>arm64 nativos</b> e num pod do Kubernetes: o capítulo 18 mostra o resultado. O que depende de um runner ou cluster que não existe aqui aparece como <span class="badge todo">não testado</span>. Esses itens são o ponto de partida do seu desafio.</p>
+<p>Este livro constrói o <b>forja v0.4</b>, que está em produção no repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a>. É um CLI que recebe o Dockerfile da aplicação e executa <code>exists → build → scan → gate → push</code>: builda com a biblioteca do buildah, escaneia CVEs (Syft e Grype), secrets (Gitleaks) e configuração, dá uma nota de 0 a 100, e só publica se a imagem passar. Publica no GHCR ou no ECR central com <code>--registry</code>. É um binário estático que roda em qualquer imagem Linux, em amd64 e arm64, sem Docker nem daemon dentro dele. A imagem oficial é assinada com cosign.</p>
+<p>Tudo o que aparece como <span class="badge ok">testado</span> foi executado e as saídas são reais. O CI do repositório repete os testes a cada push, em runners amd64 e <b>arm64 nativos</b>, num pod do Kubernetes e contra um ECR emulado: o capítulo 18 mostra o resultado. O que depende de algo que não existe aqui (um nó EKS, a conta AWS real) aparece como <span class="badge todo">não testado</span>.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Parte</th><th>Capítulos</th><th>Resultado</th></tr></thead>
 <tbody>
 <tr><td>Visão</td><td>01–03</td><td>Onde o forja roda, as ferramentas, o que instalar</td></tr>
 <tr><td>Fundamentos</td><td>04–06</td><td>Go sem classes, o projeto do zero, a casca Cobra</td></tr>
 <tr><td>Bibliotecas</td><td>07–12</td><td>Importar, ler e usar buildah, Syft, Grype e Gitleaks, os 4 erros reais até funcionar, e os testes</td></tr>
-<tr><td>Execução</td><td>13–18</td><td>Qualquer imagem, permissões mínimas, Windows, multi-arch no EKS, Kubernetes e o CI no GitHub</td></tr>
-<tr><td>Fechamento</td><td>19–20</td><td>Riscos e os desafios, resolvidos</td></tr>
+<tr><td>Execução</td><td>13–19</td><td>Qualquer imagem, permissões mínimas, Windows, multi-arch no EKS, Kubernetes, o CI no GitHub e o ECR</td></tr>
+<tr><td>Fechamento</td><td>20–21</td><td>Riscos e os desafios, resolvidos</td></tr>
+<tr><td>Apêndice</td><td>A</td><td>Catálogo de erros: sintoma, causa, como investigar e correção</td></tr>
 </tbody></table></div>
-<div class="callout"><span class="tag">Regra de ouro</span><p>Digite o código em vez de copiar. O código completo e validado está no repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a> (cópia local em <code>C:\wb\estudos\forja-referencia</code>). Use-o para comparar quando travar, não para pular etapas.</p></div>
+
+<h3>O roteiro de estudo: 4 etapas que compilam</h3>
+<p>Os capítulos mostram o código <b>final</b> de cada arquivo. Se você digitar o capítulo 6 e tentar compilar, não vai conseguir: o <code>root.go</code> final já depende do motor de build, do scan e dos registries, que só chegam nos capítulos 9, 11 e 19. Para estudar passo a passo, o repositório tem o branch <code>estudo</code>, que reconstrói o forja em 4 etapas. Cada etapa compila, tem os testes passando e foi validada de verdade:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Tag</th><th>Etapa</th><th>Capítulos</th><th>Validação (no README da etapa)</th></tr></thead>
+<tbody>
+<tr><td><code>estudo-e1</code></td><td>casca Cobra + registry: <code>exists</code>, <code>inspect</code>, <code>version</code></td><td>4, 5, 6, 8</td><td><code>forja exists docker.io/library/alpine:3.20</code> → <code>EXISTE ... sha256:</code></td></tr>
+<tr><td><code>estudo-e2</code></td><td>motor buildah: <code>build</code>, <code>push</code>, <code>manifest</code>, multi-arch, imagem estática</td><td>7, 9, 10, 13, 16</td><td><code>BUILD OK</code> + <code>PUSH OK</code> num registry local, com <code>RUN</code></td></tr>
+<tr><td><code>estudo-e3</code></td><td>scan, nota, gate e <code>run</code></td><td>11, 12, 14, 15</td><td>isca limpa APROVADA; isca de secret REPROVADA, nada publicado</td></tr>
+<tr><td><code>estudo-e4</code></td><td>produção: <code>--registry</code>/ECR, CI, livro (igual à <code>main</code>)</td><td>17, 18, 19</td><td>o CI do capítulo 18</td></tr>
+</tbody></table></div>
+<p>O jeito de estudar cada etapa:</p>
+<ol class="steps">
+<li><b>Leia os capítulos da etapa.</b></li>
+<li><b>Veja o que a etapa acrescenta</b> à anterior: <code>git diff estudo-e1 estudo-e2</code>. É o "o que mudou e por quê" de cada passo, arquivo por arquivo.</li>
+<li><b>Digite</b> essas mudanças no seu projeto (em <code>C:\wb\golang\forja</code>, por exemplo), sem copiar.</li>
+<li><b>Valide</b> com os comandos do README da etapa (<code>git show estudo-e2:README.md</code>) e compare a saída.</li>
+<li><b>Compare</b> com a referência quando travar: <code>git diff estudo-e2 -- internal/</code> a partir do seu código.</li>
+</ol>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">git clone https://github.com/chwiee/forja.git && cd forja
+git checkout estudo-e1                 # o código da etapa 1
+git diff estudo-e1 estudo-e2 --stat    # o que a etapa 2 acrescenta
+git show estudo-e2:README.md           # como validar a etapa 2</code></pre></div>
+<div class="callout"><span class="tag">Regra de ouro</span><p>Digite o código em vez de copiar. Quando algo quebrar, antes de olhar a referência, procure o sintoma no <a href="#apendice-erros">Apêndice A</a>: quase todo erro que você vai ver já aconteceu na construção do forja e está lá com a causa e a correção.</p></div>
 </section>
 

@@ -1,0 +1,66 @@
+<!-- ============================================================ apendice-erros -->
+<section class="chapter" id="apendice-erros">
+<div class="ch-num">APÊNDICE A</div>
+<h2>Catálogo de erros</h2>
+<p>Todos os erros abaixo aconteceram de verdade na construção do forja. Quando algo quebrar, procure aqui pela mensagem (Ctrl+F) antes de qualquer outra coisa. O método de investigação é quase sempre o mesmo do capítulo 8: copie um trecho da mensagem, ache com <code>git grep</code> o código que a gera, leia a condição.</p>
+</section>
+</article>
+
+<h3 id="erros-go">Go, dependências e ferramentas</h3>
+<div class="table-wrap wide"><table>
+<thead><tr><th>Sintoma</th><th>Causa</th><th>Como achar</th><th>Correção</th></tr></thead>
+<tbody>
+<tr><td><code>missing go.sum entry for module providing package go.podman.io/storage (imported by .../alltransports)</code></td><td>Importar um pacote "guarda-chuva" puxa todos os transports e as dependências deles</td><td>Ler o caminho <code>imported by</code> da mensagem</td><td>Importar o pacote específico: <code>docker.ParseReference</code> (cap. 7)</td></tr>
+<tr><td><code>exec: ".../govulncheck": executable file not found</code></td><td><code>GOOS=linux go run</code> compila a própria ferramenta para Linux</td><td>O caminho aponta para o cache do <code>go build</code></td><td><code>go install</code> a ferramenta e usar <code>GOOS</code> só na análise (cap. 7)</td></tr>
+<tr><td><code>Package go/constant does not have module info</code> (go-licenses)</td><td>Ferramenta compilada com um toolchain diferente do projeto</td><td><code>go version -m $(go env GOPATH)/bin/go-licenses</code></td><td>Reinstalar a ferramenta depois de mudar o Go (cap. 12)</td></tr>
+<tr><td><code>go-licenses</code> aponta GPL-2.0 em <code>spdx/tools-golang</code></td><td>Licença dupla (Apache-2.0 OU GPL-2.0); o detector mostra uma</td><td>Ler o <code>LICENSE.code</code> do repositório</td><td>Usar sob Apache-2.0 e registrar a decisão (cap. 12)</td></tr>
+<tr><td><code>go-licenses</code> aponta "Unknown"</td><td>Cabeçalho curto de licença que o detector não reconhece, ou falta o LICENSE no seu projeto</td><td><code>gh api repos/ORG/REPO --jq .license.spdx_id</code> e ler o arquivo</td><td>Conferência manual; ter LICENSE desde o primeiro commit (cap. 5, 12)</td></tr>
+<tr><td><code>btrfs/version.h: No such file or directory</code> (só no CI)</td><td>No Linux <b>com</b> cgo o driver btrfs é compilado; no Windows e com <code>CGO_ENABLED=0</code>, não</td><td>O pacote na mensagem: <code>go.podman.io/storage/drivers/btrfs</code></td><td>Tag <code>exclude_graphdriver_btrfs</code> em todo vet/test/build (cap. 12)</td></tr>
+</tbody></table></div>
+
+<h3 id="erros-buildah">Buildah dentro de um container</h3>
+<div class="table-wrap wide"><table>
+<thead><tr><th>Sintoma</th><th>Causa</th><th>Como achar</th><th>Correção</th></tr></thead>
+<tbody>
+<tr><td><code>mounting an overlay over build context directory: ... operation not permitted</code></td><td>Sem permissão de mount</td><td><code>git grep "mounting an overlay over build context"</code> → <code>imagebuildah/build_linux.go</code></td><td>Capabilities mínimas, com <code>SYS_ADMIN</code> (cap. 10, 14)</td></tr>
+<tr><td><code>mount overlay: ... invalid argument</code></td><td>Overlay em cima do disco do container, que já é overlay</td><td>O <code>upperdir</code> na mensagem está em <code>/var/tmp</code></td><td><code>/var/tmp</code> num volume / emptyDir (cap. 10)</td></tr>
+<tr><td><code>could not find "netavark" in one of [...]</code></td><td>O buildah exige o binário de rede mesmo com a rede do host</td><td><code>new.go</code> → <code>getNetworkInterface</code></td><td>Implementação própria de <code>ContainerNetwork</code> (<code>hostnet_linux.go</code>) (cap. 9, 10)</td></tr>
+<tr><td><code>parsing PID "": strconv.Atoi: parsing "": invalid syntax</code></td><td>Binário sem cgo: a função em C que escreve o PID não existe</td><td><code>git grep "parsing PID"</code> → <code>pkg/unshare/unshare_linux.go</code> e <code>unshare_cgo.go</code></td><td><code>CGO_ENABLED=1</code>, estático com musl (cap. 10, 13)</td></tr>
+<tr><td><code>mount overlay: ... permission denied</code> com <code>--cap-drop ALL --cap-add SYS_ADMIN</code></td><td>Faltam outras capabilities (<code>DAC_OVERRIDE</code> e cia.)</td><td>Adicionar capabilities uma a uma até passar</td><td>As 12 capabilities do cap. 14</td></tr>
+<tr><td><code>error setting capabilities for process: ... operation not permitted</code></td><td>O <code>RUN</code> recebe as capabilities padrão do containers.conf, e o forja não pode dar o que não tem</td><td>Comparar com a lista padrão do containers.conf</td><td>Padrão do containers.conf + <code>SYS_ADMIN</code> (cap. 14)</td></tr>
+<tr><td><code>setting "RLIMIT_NOFILE" limit to soft=1048576 ... (was soft=65536,hard=65536): operation not permitted</code> (só no CI)</td><td>O buildah dá 1048576 arquivos a cada <code>RUN</code>; subir o teto exige <code>CAP_SYS_RESOURCE</code>. O Docker Desktop já tem 1048576</td><td><code>run_linux.go</code> → <code>addRlimits</code>; reproduzir com <code>docker run --ulimit nofile=65536:65536</code></td><td><code>currentUlimits()</code>: passar o teto atual (cap. 14, 18)</td></tr>
+<tr><td><code>mkdir /run/containers: read-only file system</code> e depois <code>mkdir /var/cache/containers</code></td><td>Raiz somente leitura</td><td>O caminho na mensagem</td><td>tmpfs/emptyDir nesses dois diretórios (cap. 14)</td></tr>
+<tr><td><code>chown ... operation not permitted</code> com <code>--user 1000</code></td><td>O forja precisa ser root <b>dentro</b> do container</td><td>—</td><td>Root no container + <code>hostUsers: false</code> no Kubernetes (cap. 14, 17)</td></tr>
+<tr><td><code>Error during reexec(...): No such file or directory</code></td><td>Binário arm64 <b>emulado</b> (QEMU) não consegue o <code>fexecve</code> do reexec</td><td><code>git grep "Error during reexec"</code> → <code>unshare.c</code></td><td>Não emular: buildar em nó arm64 real (cap. 16)</td></tr>
+</tbody></table></div>
+
+<h3 id="erros-imagem">Imagem, scan e plataformas</h3>
+<div class="table-wrap wide"><table>
+<thead><tr><th>Sintoma</th><th>Causa</th><th>Como achar</th><th>Correção</th></tr></thead>
+<tbody>
+<tr><td><code>x509: certificate signed by unknown authority</code> (debian-slim, scratch)</td><td>A imagem não tem certificados CA</td><td><code>ls /etc/ssl/certs</code> na imagem</td><td><code>golang.org/x/crypto/x509roots/fallback</code> (cap. 13)</td></tr>
+<tr><td><code>GLIBC_2.xx not found</code> (previsto, evitado)</td><td>Binário dinâmico linkado contra glibc mais nova que a da imagem</td><td><code>file forja</code> → <code>dynamically linked</code></td><td>Estático com musl (cap. 13)</td></tr>
+<tr><td><code>carregando banco de CVEs: database does not exist</code></td><td>Raiz somente leitura: o Grype baixa o banco num temporário em <code>/tmp</code></td><td>Reproduzir com <code>docker run --read-only</code></td><td><code>ENV TMPDIR=/var/tmp</code> na imagem (cap. 14)</td></tr>
+<tr><td>Token falso não é acusado como secret</td><td>O Gitleaks ignora tokens de baixa entropia (<code>ghp_abcdef...0123456789</code>)</td><td>A nota reprova, mas sem <code>REPROVOU: secret</code></td><td>Iscas com token aleatório (cap. 11)</td></tr>
+<tr><td><code>rename ... Parâmetro incorreto</code> no scan (Windows nativo)</td><td>A biblioteca de camadas do Syft grava nomes com <code>:</code></td><td>O caminho <code>0-sha256:...</code> na mensagem</td><td>O forja recusa scan no Windows; usar a imagem (cap. 15)</td></tr>
+<tr><td><code>accepts at most 1 arg(s), received 2</code> (PowerShell)</td><td><code>linux/amd64,linux/arm64</code> sem aspas vira lista</td><td>Só acontece no PowerShell</td><td>Aspas: <code>--platform "linux/amd64,linux/arm64"</code> (cap. 15)</td></tr>
+<tr><td>Acentos quebrados (<code>jÃ¡</code>) ao salvar saída pelo PowerShell</td><td>O PowerShell 5.1 decodifica UTF-8 como ANSI</td><td>—</td><td>Capturar pelo bash, ou <code>[Console]::OutputEncoding = UTF8</code></td></tr>
+<tr><td><code>/bin/sh\r: not found</code> (previsto, evitado)</td><td>Script com fim de linha CRLF (Windows) rodando em Linux</td><td>Indicador "CRLF" no editor</td><td><code>.gitattributes</code> com <code>eol=lf</code> (cap. 5, 15)</td></tr>
+</tbody></table></div>
+
+<h3 id="erros-ci">CI, Kubernetes e registries</h3>
+<div class="table-wrap wide"><table>
+<thead><tr><th>Sintoma</th><th>Causa</th><th>Como achar</th><th>Correção</th></tr></thead>
+<tbody>
+<tr><td>404 do registry vira erro genérico (exit 1 em vez de 2)</td><td><code>docker.GetDigest</code> embrulha o 404 num tipo não exportado</td><td>Sonda com <code>%T</code> e <code>errors.Unwrap</code></td><td>GET do manifesto e testar <code>errcode</code> (cap. 8)</td></tr>
+<tr><td>"não existe" funciona no Docker Hub mas não no GHCR ou no registry local</td><td>Cada registry embrulha o erro diferente (<code>errcode.Error</code>, <code>errcode.ErrorCode</code>, <code>NAME_UNKNOWN</code>)</td><td>Mesma sonda contra 3 registries</td><td><code>translate</code> testando os dois tipos e os dois códigos (cap. 6, 8)</td></tr>
+<tr><td><code>error mounting "sysfs" to rootfs at "/sys": ... operation not permitted</code> (pod em <code>ContainerCreating</code>)</td><td><code>hostUsers: false</code> no kind aninhado dentro do Docker do runner</td><td><code>kubectl describe pod</code> → <code>FailedCreatePodSandBox</code></td><td>No CI, sem <code>hostUsers</code>; validar em nó real (cap. 17)</td></tr>
+<tr><td><code>kubectl wait --for=...Succeeded</code> fica 15 min parado</td><td>O <code>wait</code> não termina quando o pod falha</td><td>—</td><td>Laço que espera <code>Succeeded</code> <b>ou</b> <code>Failed</code> (cap. 18)</td></tr>
+<tr><td><code>já existe no registry e --immutable está ligado</code> no e2e da release</td><td>Tag de teste por commit; a release roda no mesmo commit da <code>main</code></td><td>Comparar o commit das duas execuções</td><td>Tag de teste por execução (<code>github.run_id</code>) (cap. 18)</td></tr>
+<tr><td><code>git push</code> parado por minutos no Windows</td><td>Git Credential Manager abre uma janela escondida</td><td><code>git config --get-all credential.helper</code> → <code>manager</code></td><td><code>credential.helper '!gh auth git-credential'</code> (cap. 18)</td></tr>
+<tr><td><code>--tlog-upload=false is not supported with --signing-config</code> (cosign v3)</td><td>Mudança de API do cosign v3</td><td>A própria mensagem sugere o caminho</td><td><code>--use-signing-config=false --tlog-upload=false</code> (cap. 18)</td></tr>
+<tr><td><code>received unexpected HTTP status: 503 Service Unavailable</code> no floci</td><td>O proxy do floci não alcança o registry de apoio (rede padrão)</td><td><code>curl</code> direto no registry de apoio (<code>127.0.0.1:5100</code>) dá 200</td><td>Rede dedicada: <code>FLOCI_SERVICES_DOCKER_NETWORK</code> (cap. 19)</td></tr>
+<tr><td><code>OCI manifest found, but accept header does not support OCI manifests</code> (floci)</td><td>O proxy do floci repassa só o último cabeçalho <code>Accept</code></td><td><code>curl</code> com 1, 2 e 3 cabeçalhos <code>Accept</code></td><td>Diferença do emulador; provar <code>exists</code> num registry real (cap. 19)</td></tr>
+</tbody></table></div>
+<article>
+

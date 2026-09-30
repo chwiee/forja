@@ -2,7 +2,7 @@
 <section class="chapter" id="c18">
 <div class="ch-num">CAPÍTULO 18</div>
 <h2>O CI do forja no GitHub <span class="badge ok">testado</span></h2>
-<p>O repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a> (privado) tem um único workflow, com cinco jobs em sequência. Cada push na <code>main</code> prova de novo tudo o que este livro afirma, e em hardware real.</p>
+<p>O repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a> (privado) tem um único workflow, com sete jobs. Cada push na <code>main</code> prova de novo tudo o que este livro afirma, em hardware real: amd64, arm64, Kubernetes e um ECR emulado.</p>
 <div class="diagram">
 <pre class="mermaid">
 flowchart LR
@@ -10,8 +10,10 @@ flowchart LR
   i --&gt; e1["3. e2e amd64&lt;br/&gt;ubuntu-24.04"]
   i --&gt; e2["3. e2e arm64&lt;br/&gt;ubuntu-24.04-arm"]
   i --&gt; k["5. k8s&lt;br/&gt;pod no kind"]
+  i --&gt; ecr["6. ecr&lt;br/&gt;floci"]
   e1 --&gt; m["4. manifest&lt;br/&gt;amd64 + arm64"]
   e2 --&gt; m
+  l["7. livro&lt;br/&gt;gera o manual"]
 </pre>
 </div>
 <div class="table-wrap"><table>
@@ -19,9 +21,11 @@ flowchart LR
 <tbody>
 <tr><td><code>test</code></td><td>Código compila no Linux com cgo, os testes passam, nenhuma CVE alcançável</td></tr>
 <tr><td><code>image</code></td><td>A imagem multi-arch do forja é construída, publicada em <code>ghcr.io/chwiee/forja</code> e assinada</td></tr>
-<tr><td><code>e2e</code></td><td>Em amd64 <b>e arm64 nativo</b>: assinatura confere; um Dockerfile com <code>RUN</code> é buildado, escaneado e publicado; a imagem roda na arquitetura certa; a isca de secret reprova (exit 3), o token não aparece no log e nada é publicado; a isca de CVEs reprova</td></tr>
+<tr><td><code>e2e</code></td><td>Em amd64 <b>e arm64 nativo</b>: assinatura confere; <code>run --registry ghcr</code> builda (com <code>RUN</code>), escaneia e publica; a mesma tag com <code>--immutable</code> é recusada (exit 2) antes do build; a imagem roda na arquitetura certa; a isca de secret reprova (exit 3) sem vazar o token e sem publicar; a isca de CVEs reprova</td></tr>
 <tr><td><code>manifest</code></td><td>As imagens das duas arquiteturas viram um nome só</td></tr>
 <tr><td><code>k8s</code></td><td>O forja roda num pod com o <code>securityContext</code> mínimo e publica num registry do cluster</td></tr>
+<tr><td><code>ecr</code></td><td><code>run --registry ecr</code> contra o floci: credencial pelo SDK da AWS, push, mesmo digest no <code>describe-images</code>, repositório IMMUTABLE recusa sobrescrever (cap. 19)</td></tr>
+<tr><td><code>livro</code></td><td>Este livro é gerado do código real (<code>docs/livro/build.sh</code>); se um arquivo citado sumir, o job falha</td></tr>
 </tbody></table></div>
 
 <h3>18.1 O workflow</h3>
@@ -33,16 +37,19 @@ flowchart LR
 <h3>18.2 Assinatura sem log público</h3>
 <p>O modo <i>keyless</i> do cosign grava a identidade do workflow (inclusive o nome do repositório) no Rekor, um log público. Para um repositório privado isso vaza informação, então o forja assina com <b>chave própria e sem log</b>. A chave privada e a senha ficam nos secrets <code>COSIGN_PRIVATE_KEY</code> e <code>COSIGN_PASSWORD</code>; a pública está versionada em <code>cosign.pub</code>. Uma lição do caminho: no cosign v3, <code>--tlog-upload=false</code> sozinho é recusado; é preciso também <code>--use-signing-config=false</code>. Testado aqui antes do CI: a assinatura confere com a chave certa e é recusada com outra chave (<code>accepted signatures do not match threshold</code>).</p>
 <div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">docker run --rm -v "$PWD:/w" -w /w ghcr.io/sigstore/cosign/cosign:v3.1.3 \
-  verify --key cosign.pub --insecure-ignore-tlog ghcr.io/chwiee/forja:0.3.0</code></pre></div>
+  verify --key cosign.pub --insecure-ignore-tlog ghcr.io/chwiee/forja:0.4.1</code></pre></div>
 
 <h3>18.3 O que o CI encontrou que o Windows não mostrava</h3>
-<p>Tudo passava no Windows e no Docker Desktop. O CI achou três erros, e cada um foi reproduzido aqui antes de ser corrigido:</p>
+<p>Tudo passava no Windows e no Docker Desktop. O CI achou os erros abaixo, e cada um foi reproduzido aqui antes de ser corrigido. Os três últimos foram erros do próprio CI, e não do forja: estão aqui porque mostram como um teste pode mentir.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Onde</th><th>Erro</th><th>Causa</th><th>Correção</th></tr></thead>
 <tbody>
 <tr><td>job <code>test</code></td><td><code>btrfs/version.h: No such file or directory</code></td><td>só no Linux <b>com</b> cgo o driver btrfs é compilado</td><td>tag <code>exclude_graphdriver_btrfs</code> no vet e nos testes (cap. 12.4)</td></tr>
 <tr><td>job <code>e2e</code>, amd64 e arm64</td><td><code>setting "RLIMIT_NOFILE" limit to soft=1048576 ... (was soft=65536,hard=65536): operation not permitted</code></td><td>o buildah dá a cada <code>RUN</code> <code>nofile</code>=1048576 (<code>run_linux.go</code>, <code>addRlimits</code>); subir acima do teto exige <code>CAP_SYS_RESOURCE</code>. O Docker Desktop já tem teto 1048576, por isso não aparecia</td><td>o forja passa o teto atual (<code>currentUlimits</code>) + teste; reproduzido com <code>docker run --ulimit nofile=65536:65536</code></td></tr>
 <tr><td>antecipado para o <code>k8s</code></td><td><code>carregando banco de CVEs: database does not exist</code></td><td>com a raiz somente leitura, o Grype baixa o banco num temporário em <code>/tmp</code>, que não é gravável; a mensagem engana</td><td><code>ENV TMPDIR=/var/tmp</code> na imagem; reproduzido com <code>docker run --read-only</code></td></tr>
+<tr><td>job <code>k8s</code></td><td><code>error mounting "sysfs" to rootfs at "/sys": ... operation not permitted</code></td><td><code>hostUsers: false</code> no kind aninhado dentro do Docker do runner: o sandbox do pod nem sobe</td><td>no CI, o manifesto entra sem a linha <code>hostUsers</code>; ela foi validada no kind do Docker Desktop (cap. 17)</td></tr>
+<tr><td>job <code>k8s</code></td><td>15 minutos parado num pod que já tinha falhado</td><td><code>kubectl wait --for=jsonpath=...Succeeded</code> não termina quando o pod falha</td><td>laço que espera <code>Succeeded</code> <b>ou</b> <code>Failed</code> e mostra os logs</td></tr>
+<tr><td>release <code>v0.4.0</code>, <code>e2e</code></td><td><code>já existe no registry e --immutable está ligado</code></td><td>a tag das imagens de teste era por commit, e a release roda no mesmo commit que a <code>main</code> já tinha testado. O forja acertou; o CI estava errado</td><td>tag de teste por execução: <code>e2e-${{ github.run_id }}</code></td></tr>
 </tbody></table></div>
 <p>O erro do limite de arquivos também trouxe uma boa notícia: no runner arm64 ele aconteceu <b>depois</b> do reexec do buildah. Ou seja, o forja arm64 nativo passou exatamente pelo ponto que falhava na emulação do capítulo 16.4.</p>
 <p>Uma lição de ferramenta: o <code>git push</code> ficava minutos parado no Windows porque o Git Credential Manager abria uma janela escondida. Com o helper do GitHub CLI (<code>git config credential.helper '!gh auth git-credential'</code>), o push levou 3 segundos.</p>

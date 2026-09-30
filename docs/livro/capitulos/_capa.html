@@ -25,6 +25,7 @@
     <li><a href="#c19"><span>19</span>GHCR e ECR</a></li>
     <li><a href="#c20"><span>20</span>Riscos</a></li>
     <li><a href="#c21"><span>21</span>Desafios resolvidos</a></li>
+    <li><a href="#apendice-erros"><span>A</span>Catálogo de erros</a></li>
     <li><a href="#fontes"><span>—</span>Fontes</a></li>
   </ol>
 </nav>
@@ -32,16 +33,16 @@
 <main>
 <article>
 <header class="cover">
-  <div class="eyebrow">Ebook técnico · 4ª edição · Go · Containers · CI</div>
+  <div class="eyebrow">Ebook técnico · 5ª edição · Go · Containers · CI</div>
   <h1>Forja, do zero ao CI em produção</h1>
-  <p class="lede">Como construir um CLI em Go com Cobra que builda, escaneia e publica imagens a partir do Dockerfile da aplicação, usando as bibliotecas do buildah, Syft, Grype e Gitleaks dentro do próprio processo. O resultado é um binário estático que roda em qualquer imagem Linux, em amd64 e arm64, e só publica a imagem se ela passar no gate de segurança. Tudo provado no Windows, em runners amd64 e arm64 do GitHub e num pod do Kubernetes.</p>
-  <div class="meta"><span><b>Testado em</b> 29/09/2026</span><span><b>forja</b> v0.4.0</span><span><b>Go</b> 1.26.8</span><span><b>buildah</b> v1.45.1</span><span><b>Grype</b> v0.119.0</span><span><b>Imagem</b> 142 MB</span><span><b>Arquiteturas</b> amd64 · arm64</span></div>
+  <p class="lede">Como construir um CLI em Go com Cobra que builda, escaneia e publica imagens a partir do Dockerfile da aplicação, usando as bibliotecas do buildah, Syft, Grype e Gitleaks dentro do próprio processo. O resultado é um binário estático que roda em qualquer imagem Linux, em amd64 e arm64, e só publica a imagem se ela passar no gate de segurança, no GHCR ou no ECR central. Tudo provado no Windows, em runners amd64 e arm64 do GitHub, num pod do Kubernetes e contra um ECR emulado, com um roteiro de estudo em 4 etapas que compilam.</p>
+  <div class="meta"><span><b>Testado em</b> 30/09/2026</span><span><b>forja</b> v0.4.1</span><span><b>Go</b> 1.26.8</span><span><b>buildah</b> v1.45.1</span><span><b>Grype</b> v0.119.0</span><span><b>Imagem</b> 142 MB</span><span><b>Arquiteturas</b> amd64 · arm64</span></div>
 </header>
 
 <details class="toc-mobile">
   <summary>Capítulos</summary>
   <ol>
-    <li><a href="#c0">Como usar</a></li><li><a href="#c1">Arquitetura</a></li><li><a href="#c2">Ferramentas</a></li><li><a href="#c3">Seu PC</a></li><li><a href="#c4">Go para quem pensa em classes</a></li><li><a href="#c5">Projeto do zero</a></li><li><a href="#c6">Cobra: a casca do CLI</a></li><li><a href="#c7">Importando uma lib</a></li><li><a href="#c8">Lendo o código de uma lib</a></li><li><a href="#c9">O motor: buildah</a></li><li><a href="#c10">Quatro erros até funcionar</a></li><li><a href="#c11">O scan</a></li><li><a href="#c12">Testando</a></li><li><a href="#c13">Qualquer imagem</a></li><li><a href="#c14">Permissões mínimas</a></li><li><a href="#c15">Rodando no Windows</a></li><li><a href="#c16">Multi-arch e EKS</a></li><li><a href="#c17">Kubernetes</a></li><li><a href="#c18">O CI no GitHub</a></li><li><a href="#c19">GHCR e ECR</a></li><li><a href="#c20">Riscos</a></li><li><a href="#c21">Desafios resolvidos</a></li><li><a href="#fontes">Fontes</a></li>
+    <li><a href="#c0">Como usar</a></li><li><a href="#c1">Arquitetura</a></li><li><a href="#c2">Ferramentas</a></li><li><a href="#c3">Seu PC</a></li><li><a href="#c4">Go para quem pensa em classes</a></li><li><a href="#c5">Projeto do zero</a></li><li><a href="#c6">Cobra: a casca do CLI</a></li><li><a href="#c7">Importando uma lib</a></li><li><a href="#c8">Lendo o código de uma lib</a></li><li><a href="#c9">O motor: buildah</a></li><li><a href="#c10">Quatro erros até funcionar</a></li><li><a href="#c11">O scan</a></li><li><a href="#c12">Testando</a></li><li><a href="#c13">Qualquer imagem</a></li><li><a href="#c14">Permissões mínimas</a></li><li><a href="#c15">Rodando no Windows</a></li><li><a href="#c16">Multi-arch e EKS</a></li><li><a href="#c17">Kubernetes</a></li><li><a href="#c18">O CI no GitHub</a></li><li><a href="#c19">GHCR e ECR</a></li><li><a href="#c20">Riscos</a></li><li><a href="#c21">Desafios resolvidos</a></li><li><a href="#apendice-erros">Catálogo de erros</a></li><li><a href="#fontes">Fontes</a></li>
   </ol>
 </details>
 

@@ -2,7 +2,7 @@
 <section class="chapter" id="c2">
 <div class="ch-num">CAPÍTULO 02</div>
 <h2>Ferramentas e repositórios</h2>
-<p>O forja v0.3 usa sete bibliotecas principais, que trazem 983 módulos no total. As outras ferramentas entram no build da imagem, no pipeline ou nos testes. Versões e licenças conferidas em 29/09/2026.</p>
+<p>O forja v0.4 usa oito bibliotecas principais (a oitava é o SDK da AWS, para o ECR), que trazem 983 módulos no total. As outras ferramentas entram no build da imagem, no pipeline ou nos testes. Versões e licenças conferidas em 29/09/2026.</p>
 </section>
 </article>
 <div class="table-wrap wide"><table>
@@ -18,6 +18,8 @@
 <tr><td><a href="https://github.com/GoogleContainerTools/distroless">distroless</a></td><td>imagem base do forja</td><td>imagem</td><td><code>gcr.io/distroless/static-debian13</code></td><td>Apache-2.0</td><td>debian13</td></tr>
 <tr><td><a href="https://github.com/tonistiigi/xx">xx</a></td><td>compilação cruzada com cgo</td><td>imagem de build</td><td><code>tonistiigi/xx</code></td><td>MIT</td><td>1.6.1</td></tr>
 <tr><td><a href="https://github.com/sigstore/cosign">cosign</a></td><td>assinatura da imagem do forja</td><td>container no CI</td><td><code>ghcr.io/sigstore/cosign/cosign</code></td><td>Apache-2.0</td><td>v3.1.3</td></tr>
+<tr><td><a href="https://github.com/aws/aws-sdk-go-v2">AWS SDK Go v2</a></td><td>credencial do ECR (<code>GetAuthorizationToken</code>)</td><td>lib</td><td><code>github.com/aws/aws-sdk-go-v2/service/ecr</code></td><td>Apache-2.0</td><td>ecr v1.66.1</td></tr>
+<tr><td><a href="https://github.com/floci-io/floci">floci</a></td><td>ECR emulado nos testes</td><td>container no CI</td><td><code>floci/floci:2.1.0</code></td><td>MIT</td><td>2.1.0</td></tr>
 <tr><td><a href="https://github.com/kubernetes-sigs/kind">kind</a></td><td>cluster Kubernetes do teste</td><td>binário no CI</td><td><code>kindest/node:v1.36.4</code></td><td>Apache-2.0</td><td>v0.33.0</td></tr>
 <tr><td><a href="https://github.com/distribution/distribution">distribution</a></td><td>registry do laboratório</td><td>container</td><td><code>registry:3</code></td><td>Apache-2.0</td><td>v3.1.2</td></tr>
 <tr><td><a href="https://github.com/golang/vuln">govulncheck</a></td><td>CVEs no código Go</td><td>ferramenta</td><td><code>golang.org/x/vuln</code></td><td>BSD-3-Clause</td><td>v1.1.4</td></tr>

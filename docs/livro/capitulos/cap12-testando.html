@@ -2,7 +2,7 @@
 <section class="chapter" id="c12">
 <div class="ch-num">CAPÍTULO 12</div>
 <h2>Testando</h2>
-<p>O forja v0.3 é testado em sete níveis, do teste unitário no Windows até o pod no Kubernetes. Cada nível pegou algo que o anterior deixava passar.</p>
+<p>O forja v0.4 é testado em sete níveis, do teste unitário no Windows até o pod no Kubernetes. Cada nível pegou algo que o anterior deixava passar.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Nível</th><th>Comando</th><th>Pega</th><th>No forja</th></tr></thead>
 <tbody>
@@ -28,10 +28,10 @@
 Vulnerability #2: GO-2026-6253  Found in: github.com/moby/go-archive@v0.2.0 Fixed in: v0.3.0</code></pre>
 <div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">go get google.golang.org/grpc@v1.83.1 github.com/moby/go-archive@v0.3.0
 go mod tidy</code></pre></div>
-<p>Na v0.3, com Syft, Grype, Gitleaks e Go 1.26.8, o resultado local e no CI é <code>No vulnerabilities found.</code> Depois de atualizar indiretas, rode <b>tudo</b> de novo (testes, imagem, laboratório): os autores do buildah testaram com as versões antigas, e quem garante as novas é você.</p>
+<p>Na v0.4, com Syft, Grype, Gitleaks, o SDK da AWS e Go 1.26.8, o resultado local e no CI é <code>No vulnerabilities found.</code> Depois de atualizar indiretas, rode <b>tudo</b> de novo (testes, imagem, laboratório): os autores do buildah testaram com as versões antigas, e quem garante as novas é você.</p>
 
 <h3>12.3 Licenças: a ferramenta não decide sozinha</h3>
-<p>Resultado para o forja v0.3: 159 Apache-2.0, 113 MIT, 72 BSD-3-Clause, 11 BSD-2-Clause, 10 MPL-2.0, 3 ISC, 2 Unlicense, e casos isolados. Três pontos exigiram leitura humana:</p>
+<p>Resultado para o forja v0.4: 160 Apache-2.0, 113 MIT, 73 BSD-3-Clause, 11 BSD-2-Clause, 10 MPL-2.0, 3 ISC, 2 Unlicense, e casos isolados. Três pontos exigiram leitura humana:</p>
 <ul>
 <li><b>Um "GPL-2.0"</b>: <code>github.com/spdx/tools-golang</code>, que vem pelo Syft. O <code>LICENSE.code</code> do repositório diz que o código pode ser usado sob Apache-2.0 <b>ou</b> GPL-2.0-or-later, à escolha de quem usa. O forja usa sob Apache-2.0.</li>
 <li><b>Cinco "Unknown"</b>: <code>deitch/magic</code>, <code>in-toto/attestation</code> e <code>json-canonicalization</code> são Apache-2.0, com o cabeçalho curto que o detector não reconhece. Os outros eram o próprio forja antes do arquivo LICENSE.</li>

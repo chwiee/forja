@@ -21,4 +21,5 @@ capitulos/cap18-ci.html
 capitulos/cap19-ghcr-ecr.html
 capitulos/cap20-riscos.html
 capitulos/cap21-desafios.html
+capitulos/apendice-a-erros.html
 capitulos/fontes.html

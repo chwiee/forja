@@ -48,7 +48,7 @@ flowchart LR
 </pre>
 </div>
 <ol class="steps">
-<li><b>A mesma imagem do forja nos dois pods.</b> <code>ghcr.io/chwiee/forja:0.3.0</code> é multi-arch; o nó puxa a variante dele.</li>
+<li><b>A mesma imagem do forja nos dois pods.</b> <code>ghcr.io/chwiee/forja:0.4.1</code> é multi-arch; o nó puxa a variante dele.</li>
 <li><b>Um pod por arquitetura</b>, com <code>nodeSelector: kubernetes.io/arch</code> e a tag com sufixo (<code>-amd64</code>, <code>-arm64</code>). O manifesto do capítulo 17.2 já vem com isso.</li>
 <li><b>Um passo final</b> roda <code>forja manifest</code> em qualquer nó, e nem precisa de capabilities: ele só lê e escreve no registry.</li>
 <li><b>Os pods da aplicação</b> usam <code>app:1.0</code>, sem sufixo, em qualquer node group.</li>
