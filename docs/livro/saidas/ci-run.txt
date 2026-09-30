@@ -1,0 +1,33 @@
+$ gh run view 36626229901 --repo chwiee/forja
+conclusão: success (commit 8fa6497)
+  test                             success    67 s
+  image                            success   712 s   (amd64 + arm64, push GHCR, cosign)
+  e2e (amd64, ubuntu-24.04)        success   120 s
+  e2e (arm64, ubuntu-24.04-arm)    success   160 s
+  manifest                         success    14 s
+  k8s                              success   171 s
+
+e2e (arm64, ubuntu-24.04-arm), trechos do log:
+  [2/5] build
+  [3/5] scan
+  [4/5] gate: aprovada
+  NOTA  87/100 (mínimo 70)  APROVADA   pacotes: 16  achados: 5  exceções: 0
+  [5/5] push
+  PUSH OK   ghcr.io/chwiee/forja:e2e-8fa6497...-arm64  sha256:7b671a1e851f...
+  rodando em aarch64 | buildado em aarch64 |  ARM aarch64
+  ---
+  [4/5] gate: REPROVADA, nada foi publicado
+  NOTA  0/100 (mínimo 70)  REPROVADA   pacotes: 16  achados: 10
+    REPROVOU: secret encontrado: github-pat em /etc/app.conf:1 (camada 2)
+  ---
+  [4/5] gate: REPROVADA, nada foi publicado
+  NOTA  40/100 (mínimo 70)  REPROVADA   pacotes: 14  achados: 92
+
+k8s (pod no kind), log do pod:
+  fase do pod: Succeeded
+  [2/5] build
+  [3/5] scan
+  NOTA  92/100 (mínimo 70)  APROVADA   pacotes: 18  achados: 4  exceções: 0
+  [4/5] gate: aprovada
+  [5/5] push
+  PUSH OK   registry.default.svc.cluster.local:5000/app:1.0  sha256:433436a0f1f8...

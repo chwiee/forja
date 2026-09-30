@@ -1,0 +1,42 @@
+<!-- ============================================================ 05 -->
+<section class="chapter" id="c5">
+<div class="ch-num">CAPÍTULO 05</div>
+<h2>O projeto do zero</h2>
+<p>Um projeto Go é uma pasta com um <code>go.mod</code>. O layout segue o <a href="https://github.com/golang-standards/project-layout">golang-standards/project-layout</a>, só no que o forja precisa.</p>
+<ol class="steps">
+<li><b>Crie a pasta e o módulo</b> (PowerShell):
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-plaintext">mkdir C:\wb\golang\forja; cd C:\wb\golang\forja
+go mod init github.com/chwiee/forja
+git init
+mkdir cmd\forja, internal\cli, internal\build, internal\registry, deploy, scripts</code></pre></div></li>
+<li><b>Entenda cada pasta</b> antes de escrever código:
+<pre class="out"><code>forja/
+├── cmd/forja/main.go          ponto de entrada: só liga as peças
+├── internal/cli/              comandos Cobra (a casca): build, push, manifest, scan, run...
+├── internal/build/            único pacote que importa o buildah
+│   ├── build.go               tipos compartilhados (todas as plataformas)
+│   ├── build_linux.go         build, push, manifest e export (só Linux)
+│   ├── hostnet_linux.go       rede "de mentira" para o buildah (cap. 10)
+│   ├── defaults_linux.go      configuração embutida (cap. 13)
+│   ├── defaults/              policy.json e registries.conf embutidos
+│   └── build_other.go         stub para Windows/macOS
+├── internal/scan/             Syft, Grype, Gitleaks, política e nota (cap. 11)
+│   └── defaults/policy.yaml   política padrão embutida
+├── internal/registry/         único pacote que fala com o registry
+├── testdata/                  imagens-isca e Dockerfiles de teste
+├── ci/                        forja.sh, cosign.sh e o teste no Kubernetes
+├── .github/workflows/ci.yml   o CI do próprio forja (cap. 18)
+├── examples/github-actions/   pipelines prontos para os times de aplicação
+├── deploy/k8s-pod.yaml        pod de build no Kubernetes
+├── scripts/forja.ps1          atalho para Windows
+├── cosign.pub                 chave pública para verificar a imagem do forja
+├── Dockerfile                 imagem multi-arch do forja
+├── .gitattributes             força fim de linha LF (scripts rodam em Linux)
+└── LICENSE</code></pre>
+
+<p><code>internal/</code> é uma fronteira garantida pelo compilador: outro módulo não consegue importar nada dali.</p></li>
+<li><b>Defina a licença no primeiro commit.</b> Sem ela, o <code>go-licenses</code> marca o próprio projeto como "Unknown" (cap. 12). O forja de referência usa Apache-2.0, a mesma do buildah.</li>
+<li><b>Um commit por capítulo</b> daqui em diante, para você conseguir voltar quando algo quebrar.</li>
+</ol>
+</section>
+

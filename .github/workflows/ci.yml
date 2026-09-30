@@ -1,0 +1,225 @@
+# CI do forja. Cada etapa só roda se a anterior passou:
+#
+#   1. test      testes, vet e CVEs do próprio código Go
+#   2. image     imagem multi-arch do forja no GHCR, assinada com cosign
+#   3. e2e       o forja de verdade, em amd64 e arm64 NATIVOS, com as imagens-isca
+#   4. manifest  junta as imagens das duas arquiteturas num nome só
+#   5. k8s       o forja num pod do Kubernetes (kind) com as permissões mínimas
+#   6. ecr       --registry ecr contra o ECR emulado pelo floci (SDK da AWS)
+#   7. livro     gera o Manual da Forja a partir do código (independente)
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+# um push novo cancela a execução anterior do mesmo branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}          # a imagem do forja
+  E2E: ghcr.io/${{ github.repository }}            # imagens de teste: mesmo pacote, tags e2e-*
+  TAG: sha-${{ github.sha }}
+  E2E_TAG: e2e-${{ github.run_id }}   # único por execução: a release roda no mesmo commit da main
+  FORJA_IMAGE: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: vet
+        run: go vet -tags "containers_image_openpgp exclude_graphdriver_btrfs" ./...
+      - name: testes
+        run: go test -tags "containers_image_openpgp exclude_graphdriver_btrfs" ./...
+      - name: CVEs no código do forja
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -tags "containers_image_openpgp exclude_graphdriver_btrfs" ./...
+
+  image:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: build e push multi-arch (amd64 + arm64)
+        run: |
+          TAGS="-t $IMAGE:$TAG"
+          case "$GITHUB_REF" in refs/tags/v*) TAGS="$TAGS -t $IMAGE:${GITHUB_REF_NAME#v} -t $IMAGE:latest" ;; esac
+          docker buildx create --use
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION="$GITHUB_REF_NAME" $TAGS --push --metadata-file meta.json .
+          echo "DIGEST=$(jq -r '."containerimage.digest"' meta.json)" >> "$GITHUB_ENV"
+      - name: assinar a imagem (cosign, chave própria, sem log público)
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: ci/cosign.sh sign --yes --key env://COSIGN_PRIVATE_KEY --use-signing-config=false --tlog-upload=false "$IMAGE@$DIGEST"
+
+  e2e:
+    needs: image
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: "a imagem do forja é a que o CI assinou"
+        run: ci/cosign.sh verify --key cosign.pub --insecure-ignore-tlog "$FORJA_IMAGE" > /dev/null
+
+      - name: "build (com RUN) + scan + push: aprovada e publicada (--registry ghcr)"
+        run: |
+          ci/forja.sh run --registry ghcr --name "${{ github.repository }}" \
+            --tag "$E2E_TAG-${{ matrix.arch }}" --immutable testdata/multi
+
+      - name: "--immutable: a mesma tag de novo é recusada (exit 2) antes do build"
+        run: |
+          set +e
+          ci/forja.sh run --registry ghcr --name "${{ github.repository }}" \
+            --tag "$E2E_TAG-${{ matrix.arch }}" --immutable testdata/multi > saida.txt 2>&1; code=$?
+          set -e
+          cat saida.txt
+          test "$code" -eq 2
+          if grep -q "\[2/5\] build" saida.txt; then echo "não deveria ter buildado"; exit 1; fi
+
+      - name: "a imagem publicada roda nesta arquitetura (RUN nativo)"
+        run: docker run --rm "$E2E:$E2E_TAG-${{ matrix.arch }}" | tee /dev/stderr | grep -q "buildado em $(uname -m)"
+
+      - name: "isca com secret: reprovada (exit 3) e NADA publicado"
+        run: |
+          TOKEN="ghp_$(head -c 300 /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 36)"
+          set +e
+          ci/forja.sh run -t "$E2E:$E2E_TAG-secret-${{ matrix.arch }}" --build-arg "API_TOKEN=$TOKEN" \
+            --sarif secret.sarif testdata/iscas/secret > saida.txt; code=$?
+          set -e
+          cat saida.txt
+          test "$code" -eq 3
+          if grep -q "$TOKEN" saida.txt; then echo "o token vazou no log"; exit 1; fi
+          set +e; ci/forja.sh exists "$E2E:$E2E_TAG-secret-${{ matrix.arch }}"; test $? -eq 2
+
+      - name: "isca com CVEs: reprovada (exit 3)"
+        run: |
+          set +e; ci/forja.sh run -t "$E2E:$E2E_TAG-cve-${{ matrix.arch }}" testdata/iscas/cve; test $? -eq 3
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: sarif-${{ matrix.arch }}
+          path: "*.sarif"
+
+  manifest:
+    needs: e2e
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: juntar amd64 + arm64 num manifest list
+        run: ci/forja.sh manifest "$E2E:$E2E_TAG" "$E2E:$E2E_TAG-amd64" "$E2E:$E2E_TAG-arm64"
+      - name: conferir as duas arquiteturas
+        run: |
+          docker buildx imagetools inspect "$E2E:$E2E_TAG" | tee inspect.txt
+          grep -q "linux/amd64" inspect.txt && grep -q "linux/arm64" inspect.txt
+
+  k8s:
+    needs: image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: cluster kind
+        run: |
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64 && chmod +x kind
+          ./kind create cluster --image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed --wait 120s
+          docker pull "$FORJA_IMAGE" && ./kind load docker-image "$FORJA_IMAGE"
+      - name: pod do forja builda, escaneia e publica num registry do cluster
+        run: |
+          # hostUsers: false sai aqui: no kind aninhado no runner, o sandbox do pod
+          # falha ao montar /sys no user namespace ("error mounting sysfs ...
+          # operation not permitted"). Validado no kind do Docker Desktop (kernel
+          # 6.18) e necessário em nós reais; o resto do securityContext é igual.
+          sed -e "s|FORJA_IMAGE|$FORJA_IMAGE|" -e "/hostUsers: false/d" ci/k8s-e2e.yaml | kubectl apply -f -
+          kubectl wait --for=condition=Available deploy/registry --timeout=120s
+          # espera o pod TERMINAR (sucesso ou falha), no máximo 15 min
+          for i in $(seq 1 90); do
+            phase=$(kubectl get pod/forja-build -o jsonpath='{.status.phase}')
+            case "$phase" in Succeeded|Failed) break ;; esac
+            sleep 10
+          done
+          echo "fase do pod: $phase"
+          kubectl logs pod/forja-build | tee pod.txt
+          if [ "$phase" != "Succeeded" ]; then kubectl describe pod/forja-build; exit 1; fi
+          grep -q "PUSH OK" pod.txt
+
+  ecr:
+    # ECR emulado pelo floci: credencial pelo SDK da AWS (a mesma cadeia que usa
+    # a Pod Identity no EKS), --registry ecr, push e imutabilidade do repositório.
+    needs: image
+    runs-on: ubuntu-24.04
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localhost:4566
+      FORJA_ECR_ACCOUNT: "000000000000"
+      FORJA_ECR_HOST: 000000000000.dkr.ecr.us-east-1.localhost:4566
+      FORJA_DOCKER_OPTS: --add-host 000000000000.dkr.ecr.us-east-1.localhost:127.0.0.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR (para baixar a imagem do forja)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: subir o floci e criar o repositório IMMUTABLE (como a plataforma faria)
+        run: |
+          docker network create floci-net
+          docker run -d --name floci --network floci-net -p 4566:4566 \
+            -e FLOCI_SERVICES_DOCKER_NETWORK=floci-net \
+            -v /var/run/docker.sock:/var/run/docker.sock floci/floci:2.1.0
+          for i in $(seq 1 60); do curl -sf http://localhost:4566/_floci/health > /dev/null && break; sleep 2; done
+          aws ecr create-repository --repository-name org/app --image-tag-mutability IMMUTABLE
+      - name: "forja run --registry ecr: credencial do SDK, build, scan e push"
+        run: |
+          ci/forja.sh run --registry ecr --name Org/App --tag refs/tags/v1.0.0 \
+            --tls-verify=false testdata/multi | tee saida.txt
+          grep -q "PUSH OK   000000000000.dkr.ecr.us-east-1.localhost:4566/org/app:v1.0.0" saida.txt
+      - name: "o ECR tem a imagem, com o mesmo digest"
+        run: |
+          digest=$(grep -o "sha256:[a-f0-9]*" saida.txt | tail -1)
+          aws ecr describe-images --repository-name org/app \
+            --query "imageDetails[?imageTags[0]=='v1.0.0'].imageDigest" --output text | tee ecr.txt
+          grep -q "$digest" ecr.txt
+      - name: "repositório IMMUTABLE: o ECR recusa sobrescrever a tag"
+        run: |
+          set +e
+          ci/forja.sh run --registry ecr --name org/app --tag v1.0.0 --tls-verify=false testdata/multi > saida2.txt 2>&1; code=$?
+          set -e
+          grep -E "erro|immutable" saida2.txt | head -3
+          test "$code" -ne 0
+          grep -q "cannot be overwritten because the tag is immutable" saida2.txt
+
+  livro:
+    # O Manual da Forja é gerado do código real: se um arquivo citado sumir, falha.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docs/livro/build.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-da-forja
+          path: docs/livro/dist/manual-da-forja.html

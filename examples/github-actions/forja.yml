@@ -1,0 +1,35 @@
+# Pipeline de uma aplicação usando o forja (copie para .github/workflows/).
+# Builda o Dockerfile, escaneia e só publica no GHCR se passar no gate.
+name: imagem
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  packages: write
+  security-events: write   # só para o upload do SARIF (veja a nota abaixo)
+jobs:
+  imagem:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: login no GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: forja run (exists → build → scan → gate → push)
+        run: |
+          docker run --rm \
+            --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+            --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE --cap-add SETFCAP \
+            --cap-add SETGID --cap-add SETPCAP --cap-add SETUID --cap-add SYS_CHROOT \
+            --security-opt apparmor=unconfined \
+            -v "$PWD:/workspace" -v forja-tmp:/var/tmp \
+            -v "$HOME/.docker/config.json:/auth/config.json:ro" -e REGISTRY_AUTH_FILE=/auth/config.json \
+            ghcr.io/chwiee/forja:0.4.1 \
+            run --registry ghcr --name "${{ github.repository }}" --tag "${{ github.ref }}" \
+              --immutable --sarif forja.sarif .
+      # Nota: a aba Security em repositório PRIVADO exige GitHub Advanced Security.
+      # Sem ele, troque este passo por actions/upload-artifact.
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        with:
+          sarif_file: forja.sarif

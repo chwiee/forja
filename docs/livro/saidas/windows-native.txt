@@ -1,0 +1,19 @@
+> .\forja.exe exists localhost:5000/app:1.0 --tls-verify=false
+EXISTE  localhost:5000/app:1.0  sha256:20e2c183885001e5b171fafa80297dd16342373847b2a428c157cfba5bf15221
+exit=0
+
+> .\forja.exe exists localhost:5000/app:9.9 --tls-verify=false
+NÃO EXISTE  localhost:5000/app:9.9
+erro: localhost:5000/app:9.9 não existe
+exit=2
+
+> .\forja.exe inspect localhost:5000/app:1.0 --tls-verify=false
+IMAGEM         localhost:5000/app:1.0
+CONFIG DIGEST  sha256:58468176b3b94f8ec3de6d0580a975de7ee8eabccddd43a26a0044ee7ead16b4
+USER           "1000"
+ENV            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+exit=0
+
+> .\forja.exe build -t localhost:5000/app:9 .
+erro: build e push só funcionam em Linux; no Windows ou macOS rode a imagem do forja com Docker (veja o capítulo 14)
+exit=1

@@ -1,0 +1,31 @@
+<!-- ============================================================ 08 -->
+<section class="chapter" id="c8">
+<div class="ch-num">CAPÍTULO 08</div>
+<h2>Lendo o código de uma lib</h2>
+<p>A estratégia é achar um programa que já faz o que você quer e seguir as chamadas até a biblioteca. O binário <code>buildah</code> é só um cliente da biblioteca buildah, então o código dele é o melhor manual.</p>
+<ol class="steps">
+<li><b>Clone e leia o <code>go.mod</code>.</b>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">git clone --depth 1 https://github.com/containers/buildah.git
+head -1 buildah/go.mod        # module go.podman.io/buildah</code></pre></div></li>
+<li><b>Ache o comando.</b> <code>cmd/buildah/build.go</code>, função <code>buildCmd</code>. As três linhas que importam:
+<div class="code"><pre><code class="language-go">options, containerfiles, removeAll, err := buildahcli.GenBuildOptions(c, inputArgs, iopts) // flags → struct
+store, err := getStore(c)                                                                 // storage local
+id, ref, err := imagebuildah.BuildDockerfiles(getContext(), store, options, containerfiles...)</code></pre></div></li>
+<li><b>Leia a assinatura</b> com <code>GOOS=linux GOFLAGS=-mod=vendor go doc ./imagebuildah BuildDockerfiles</code>, rodado dentro do clone.</li>
+<li><b>Siga as dependências.</b> <code>getStore</code> se resume a <code>storage.DefaultStoreOptions()</code> + <code>storage.GetStore()</code>.</li>
+<li><b>Descubra o que é obrigatório.</b> O <code>define.BuildOptions</code> tem 106 campos. Procure <code>errors.New</code> e <code>if options.X == nil</code> no corpo da função. Resultado: só o Dockerfile é obrigatório; o valor zero do Go serve para o resto.</li>
+<li><b>Leia o <code>main</code></b> de quem usa a lib. Em <code>cmd/buildah/main.go</code>, a primeira linha é <code>if buildah.InitReexec() { return }</code>, e o forja precisa do mesmo.</li>
+</ol>
+<h3>Onde mais procurar</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Fonte</th><th>Quando usar</th></tr></thead>
+<tbody>
+<tr><td><a href="https://pkg.go.dev/go.podman.io/buildah/imagebuildah">pkg.go.dev</a></td><td>Navegar tipos e funções; "Imported by" mostra outros usuários</td></tr>
+<tr><td>VS Code + gopls</td><td><code>F12</code> definição, <code>Shift+F12</code> referências</td></tr>
+<tr><td><code>git grep -n "texto do erro"</code></td><td>A técnica mais útil do livro inteiro: parte da mensagem de erro e chega ao código que a gera (cap. 10)</td></tr>
+<tr><td><code>*_test.go</code>, <code>examples/</code></td><td>As chamadas mais enxutas da API</td></tr>
+</tbody></table></div>
+<h3>Estudo de caso: o 404 que não virava "não existe"</h3>
+<p><code>docker.GetDigest</code> é o jeito documentado de pegar um digest. Para uma tag inexistente, ele devolvia um erro genérico em vez de "não encontrado". Lendo <code>docker/docker_image.go</code> e <code>docker/errors.go</code>, o motivo apareceu: no 404, ele embrulha um tipo <b>não exportado</b>, que o código de fora não consegue testar com <code>errors.As</code>. Um programa de sonda mostrou que o GET do manifesto devolve códigos testáveis, mas em formatos diferentes por registry: <code>errcode.Error</code> no Docker Hub e no Quay, <code>errcode.ErrorCode</code> no GHCR, <code>NAME_UNKNOWN</code> no registry local. O <code>translate</code> do capítulo 6 é a soma dessas descobertas.</p>
+</section>
+

@@ -1,0 +1,21 @@
+$ aws ecr create-repository --repository-name org/app --image-tag-mutability IMMUTABLE
+000000000000.dkr.ecr.us-east-1.localhost:4566/org/app   IMMUTABLE
+
+$ forja run --registry ecr --name Org/App -t refs/tags/v1.0.0 --immutable --tls-verify=false testdata/multi
+credencial do ECR obtida para 000000000000.dkr.ecr.us-east-1.localhost:4566
+[1/5] exists: 000000000000.dkr.ecr.us-east-1.localhost:4566/org/app:v1.0.0 ainda não existe
+[2/5] build
+[3/5] scan
+NOTA  87/100 (mínimo 70)  APROVADA   pacotes: 16  achados: 5  exceções: 0
+[4/5] gate: aprovada
+[5/5] push
+PUSH OK   000000000000.dkr.ecr.us-east-1.localhost:4566/org/app:v1.0.0  sha256:56a95fb3456b962152111ebf872f29ba0eac5e495e7a433b67de8c360e687877
+exit=0
+
+$ aws ecr describe-images --repository-name org/app
+v1.0.0   sha256:56a95fb3456b962152111ebf872f29ba0eac5e495e7a433b67de8c360e687877
+
+$ forja run --registry ecr --name org/app -t v1.0.0 --tls-verify=false testdata/multi   (mesma tag)
+erro: push: ... tag invalid: The image tag v1.0.0 already exists in the org/app repository
+      and cannot be overwritten because the tag is immutable.
+exit=1

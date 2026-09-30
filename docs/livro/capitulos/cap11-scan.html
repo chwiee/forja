@@ -1,0 +1,55 @@
+<!-- ============================================================ SCAN -->
+<section class="chapter" id="c11">
+<div class="ch-num">CAPÍTULO 11</div>
+<h2>O scan: CVEs, secrets e nota <span class="badge ok">testado</span></h2>
+<p>O <code>forja scan</code> dá uma nota de 0 a 100 para a imagem e reprova (exit 3) quando ela fica abaixo do mínimo ou tem um problema grave. O <code>forja run</code> usa o scan como gate: reprovada, nada é publicado. Os três scanners são bibliotecas dentro do próprio binário, e não binários externos.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>O que procura</th><th>Como</th><th>Arquivo</th></tr></thead>
+<tbody>
+<tr><td>CVEs dos pacotes</td><td>Syft cataloga os pacotes; Grype cruza com o banco de CVEs</td><td><code>internal/scan/cves.go</code></td></tr>
+<tr><td>Tokens e chaves nos arquivos</td><td>Gitleaks em <b>todas</b> as camadas</td><td><code>internal/scan/secrets.go</code></td></tr>
+<tr><td>Tokens nos comandos de build</td><td>Gitleaks no histórico da imagem</td><td>idem</td></tr>
+<tr><td><code>ENV</code> e <code>--build-arg</code> sensíveis</td><td>nome parece segredo e tem valor fixo</td><td>idem</td></tr>
+<tr><td>Imagem roda como root</td><td><code>USER</code> vazio, <code>root</code> ou <code>0</code></td><td>idem</td></tr>
+</tbody></table></div>
+
+<h3>11.1 Escanear os bytes que vão ser publicados</h3>
+<p>O scan não lê a imagem do registry nem refaz o build. Ele exporta a imagem do storage local para um diretório OCI (<code>Engine.Export</code>, que é um <code>buildah.Push</code> para <code>oci:/var/tmp/forja-scan</code>) e escaneia esse diretório. O push depois publica esses mesmos bytes. Em imagens multi-arch, cada arquitetura é exportada e escaneada separadamente, e todas precisam passar.</p>
+
+<h3>11.2 CVEs: a receita do próprio Grype</h3>
+<p>Método do capítulo 8: o <code>cmd/grype/cli/commands/root.go</code>, função <code>runGrype</code>, faz em quatro chamadas o que o forja precisa:</p>
+<pre class="out"><code>grype.LoadVulnerabilityDB(distribution, installation, update)   → banco de CVEs
+pkg.Provide(input, pkg.ProviderConfig{...})                     → pacotes (via Syft)
+grype.VulnerabilityMatcher{Provider, Matchers}                  → o cruzamento
+matcher.FindMatchesContext(ctx, packages, context)              → os achados</code></pre>
+<div class="code"><div class="file"><span>internal/scan/cves.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/scan/cves.go@@</code></pre></div>
+<p>O banco de CVEs (<code>grype.anchore.io</code>) é baixado na primeira execução e fica em <code>/var/tmp/forja-db</code>, que já é um volume. Nas execuções seguintes, o scan leva segundos.</p>
+
+<h3>11.3 Secrets: todas as camadas e o histórico</h3>
+<p>Um segredo apagado numa camada de cima (<code>RUN rm /chave</code>) continua na camada de baixo e é baixado por quem puxa a imagem. Por isso o forja lê cada camada inteira, não o sistema de arquivos final. E o <code>--build-arg</code> fica gravado no histórico da imagem: é assim que o token de teste apareceu duas vezes a mais na isca abaixo.</p>
+<div class="code"><div class="file"><span>internal/scan/secrets.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/scan/secrets.go@@</code></pre></div>
+
+<h3>11.4 A política e a nota</h3>
+<p>A nota começa em 100 e cada achado desconta segundo a política. Há teto por categoria (CVEs sozinhas descontam no máximo 60) e regras que reprovam independente da nota. Toda exceção exige motivo, dono e data de validade; depois da data, o achado volta a contar.</p>
+<div class="code"><div class="file"><span>internal/scan/defaults/policy.yaml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo internal/scan/defaults/policy.yaml@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/scan/policy.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/scan/policy.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/scan/report.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/scan/report.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/scan/scan.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/scan/scan.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/scan/sarif.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/scan/sarif.go@@</code></pre></div>
+
+<h3>11.5 Os comandos <code>scan</code> e <code>run</code></h3>
+<div class="code"><div class="file"><span>internal/cli/scan.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/scan.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/cli/run.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/run.go@@</code></pre></div>
+
+<h3>11.6 As três iscas (saída real)</h3>
+<p>As iscas estão no repositório, em <code>testdata/iscas</code>. O token da isca de secret é gerado na hora, com formato de token do GitHub e sem valor real.</p>
+<pre class="out"><code>@@saida iscas.txt@@</code></pre>
+<p>Na isca de secret, o token não apareceu em nenhuma linha da saída, e o registry respondeu 404 para a tag: nada foi publicado. O SARIF foi gerado (6.448 bytes).</p>
+
+<h3>11.7 Conferindo contra o Grype oficial</h3>
+<p>Para garantir que o forja usa a biblioteca do mesmo jeito que o CLI, a mesma base foi escaneada pelo <code>grype</code> oficial:</p>
+<pre class="out"><code>$ docker run --rm anchore/grype:v0.119.0 alpine:3.12 -o json
+grype oficial: 92 achados  (5 Critical, 46 High, 37 Medium, 4 Low)
+forja scan:    92 achados  (5 critical no topo da lista)</code></pre>
+</section>
+

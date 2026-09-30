@@ -1,0 +1,33 @@
+PS> . .\scripts\forja.ps1
+PS> $env:FORJA_NETWORK = "lab"
+PS> forja build -t registry:5000/app:8.0 --build-arg VERSION=8.0 --push --tls-verify=false .
+STEP 1/7: FROM alpine:3.20
+STEP 2/7: ARG VERSION=dev
+STEP 3/7: RUN apk add --no-cache curl && echo "versao $VERSION" > /versao.txt
+time="2026-09-29T18:04:10Z" level=info msg="network namespace isolation not supported with chroot isolation, forcing host network"
+OK: 13 MiB in 24 packages
+STEP 4/7: COPY hello.sh /usr/local/bin/hello.sh
+STEP 5/7: RUN chmod +x /usr/local/bin/hello.sh
+time="2026-09-29T18:04:11Z" level=info msg="network namespace isolation not supported with chroot isolation, forcing host network"
+STEP 6/7: USER 1000
+STEP 7/7: CMD ["/usr/local/bin/hello.sh"]
+COMMIT registry:5000/app:8.0
+Getting image source signatures
+Copying blob sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2
+Copying blob sha256:9aa7c2ec24d8b580ef055054070a77a3ef5e60ebdd31f89d29438c2079198d00
+Copying config sha256:64722383e41102941f983ba4596a442d2830c07b99ded5172df50cc3a44945fb
+Writing manifest to image destination
+--> 64722383e411
+Successfully tagged registry:5000/app:8.0
+64722383e41102941f983ba4596a442d2830c07b99ded5172df50cc3a44945fb
+Getting image source signatures
+Copying blob sha256:9aa7c2ec24d8b580ef055054070a77a3ef5e60ebdd31f89d29438c2079198d00
+Copying blob sha256:08bc4e534116aa76b16015484b82eac51f9a593416feae9296c8a2d4bb7aa4a2
+Copying config sha256:64722383e41102941f983ba4596a442d2830c07b99ded5172df50cc3a44945fb
+Writing manifest to image destination
+BUILD OK  registry:5000/app:8.0  id=64722383e411
+PUSH OK   registry:5000/app:8.0  sha256:c98e2945365b8d112e6dec325b118eeac97463ea8b199f6565fc5dd017c964f1
+PS> $LASTEXITCODE
+0
+PS> docker run --rm localhost:5000/app:8.0
+ola do forja: versao 8.0

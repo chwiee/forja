@@ -1,0 +1,22 @@
+Junta imagens de arquiteturas diferentes num único nome.
+
+Uso típico no EKS com nós mistos: cada arquitetura é buildada no próprio nó,
+sem emulação, e publicada com um sufixo; este comando junta todas:
+
+  (nó amd64)  forja build -t reg/app:1.0-amd64 --push .
+  (nó arm64)  forja build -t reg/app:1.0-arm64 --push .
+  (qualquer)  forja manifest reg/app:1.0 reg/app:1.0-amd64 reg/app:1.0-arm64
+
+Depois disso, cada nó que puxar reg/app:1.0 recebe a imagem da própria arquitetura.
+
+Usage:
+  forja manifest LISTA IMAGEM [IMAGEM...] [flags]
+
+Flags:
+  -h, --help   help for manifest
+
+Global Flags:
+  -o, --output string           formato de saída: table|json (default "table")
+      --storage-driver string   driver de storage: vfs|overlay (env STORAGE_DRIVER) (default "vfs")
+      --timeout duration        tempo máximo do comando (default 30m0s)
+      --tls-verify              valida o certificado TLS do registry (default true)

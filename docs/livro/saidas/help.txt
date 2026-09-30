@@ -1,0 +1,28 @@
+forja builda imagens a partir de um Dockerfile usando a biblioteca do buildah,
+dentro do próprio processo: não precisa de Docker, daemon nem do binário buildah.
+
+Exit codes: 0 ok | 1 erro | 2 tag inexistente (ou já existente com --immutable) | 3 reprovada no gate
+
+Usage:
+  forja [command]
+
+Available Commands:
+  build       Builda uma imagem a partir de um Dockerfile (CONTEXTO padrão: .)
+  completion  Generate the autocompletion script for the specified shell
+  exists      Verifica se registry/repo:tag existe (exit 0 = existe, 2 = não existe)
+  help        Help about any command
+  inspect     Mostra USER/ENV/LABELS e aponta variáveis sensíveis hardcoded
+  manifest    Junta imagens já publicadas (uma por arquitetura) num manifest list e publica
+  push        Publica no registry uma imagem buildada antes (mesmo storage)
+  run         Pipeline completo: exists → build → scan → gate → push
+  scan        Procura CVEs, secrets e configuração insegura e dá uma nota (exit 3 se reprovar)
+  version     Mostra a versão do forja
+
+Flags:
+  -h, --help                    help for forja
+  -o, --output string           formato de saída: table|json (default "table")
+      --storage-driver string   driver de storage: vfs|overlay (env STORAGE_DRIVER) (default "vfs")
+      --timeout duration        tempo máximo do comando (default 30m0s)
+      --tls-verify              valida o certificado TLS do registry (default true)
+
+Use "forja [command] --help" for more information about a command.

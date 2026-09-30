@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/chwiee/forja/internal/build"
+	"github.com/chwiee/forja/internal/registries"
 	"github.com/chwiee/forja/internal/registry"
 	"github.com/chwiee/forja/internal/scan"
 )
@@ -41,6 +42,7 @@ type fakeEngine struct {
 	exportPlatforms []string       // plataformas que o Export devolve (vazio = imagem simples)
 	findings        []scan.Finding // o que o scanner falso encontra
 	scanned         []string       // alvos que foram escaneados
+	credsFor        []string       // hosts para os quais a credencial foi pedida
 }
 
 func (f *fakeEngine) Export(_ context.Context, o build.ExportOptions) ([]build.Exported, error) {
@@ -111,6 +113,10 @@ func run(t *testing.T, reg *fakeRegistry, eng *fakeEngine, args ...string) (stri
 		Scanner: func(_ context.Context, tg scan.Target, _ scan.Options) (*scan.Report, error) {
 			eng.scanned = append(eng.scanned, tg.Name)
 			return &scan.Report{Image: tg.Name, Findings: append([]scan.Finding(nil), eng.findings...)}, nil
+		},
+		Credentials: func(_ context.Context, r registries.Registry) (*registries.Credentials, error) {
+			eng.credsFor = append(eng.credsFor, r.Host)
+			return &registries.Credentials{Username: "AWS", Password: "token-falso"}, nil
 		},
 	})
 	var out bytes.Buffer

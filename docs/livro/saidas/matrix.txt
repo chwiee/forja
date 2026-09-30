@@ -1,0 +1,6 @@
+imagem de destino  exit  resultado                                   imagem gerada rodando
+ubuntu-2204        0     PUSH OK  registry:5000/app:em-ubuntu-2204   ola do forja: versao ubuntu-2204
+alpine             0     PUSH OK  registry:5000/app:em-alpine        ola do forja: versao alpine
+debian-slim        0     PUSH OK  registry:5000/app:em-debian-slim   ola do forja: versao debian-slim
+distroless-static  0     PUSH OK  registry:5000/app:em-distroless-static  ola do forja: versao distroless-static
+scratch            0     PUSH OK  registry:5000/app:em-scratch       ola do forja: versao scratch

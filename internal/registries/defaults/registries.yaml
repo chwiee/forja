@@ -1,0 +1,13 @@
+# Registries que o forja conhece por nome (--registry NOME).
+# Sobrescreva com --registries ARQUIVO ou FORJA_REGISTRIES=ARQUIVO; os campos
+# de conta e região do ECR também aceitam FORJA_ECR_ACCOUNT e FORJA_ECR_REGION.
+
+ecr:
+  type: ecr                 # credencial via SDK da AWS (Pod Identity, OIDC, env...)
+  account: ""               # conta central: obrigatória (aqui ou FORJA_ECR_ACCOUNT)
+  region: us-east-1         # região de push; a replicação leva às demais
+  # host: calculado como <account>.dkr.ecr.<region>.amazonaws.com
+
+ghcr:
+  type: docker              # credencial do "docker login" / REGISTRY_AUTH_FILE
+  host: ghcr.io

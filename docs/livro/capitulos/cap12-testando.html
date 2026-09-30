@@ -1,0 +1,49 @@
+<!-- ============================================================ 11 -->
+<section class="chapter" id="c12">
+<div class="ch-num">CAPÍTULO 12</div>
+<h2>Testando</h2>
+<p>O forja v0.3 é testado em sete níveis, do teste unitário no Windows até o pod no Kubernetes. Cada nível pegou algo que o anterior deixava passar.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Nível</th><th>Comando</th><th>Pega</th><th>No forja</th></tr></thead>
+<tbody>
+<tr><td>1. Compila</td><td><code>go build ./... &amp;&amp; go vet ./...</code></td><td>API errada, tipos</td><td><span class="badge ok">Windows e Linux</span></td></tr>
+<tr><td>2. Unitário</td><td><code>go test ./...</code></td><td>A lógica do CLI e da nota, sem rede nem buildah</td><td><span class="badge ok">13 testes, 9 subcasos</span></td></tr>
+<tr><td>3. Sonda</td><td>programa em <code>probe/</code></td><td>Como a lib falha de verdade</td><td>achou o bug do 404</td></tr>
+<tr><td>4. Ambiente-alvo</td><td>imagem + lab + iscas + 5 imagens + 2 arquiteturas</td><td>cgo, libc, permissões, rede, disco, emulação</td><td>4 erros (cap. 10) e o limite do QEMU (cap. 16)</td></tr>
+<tr><td>5. Referência</td><td>Grype oficial na mesma imagem</td><td>Uso errado da biblioteca</td><td><span class="badge ok">92 = 92 achados</span></td></tr>
+<tr><td>6. Vulnerabilidades e licenças</td><td><code>govulncheck</code>, <code>go-licenses</code></td><td>CVEs alcançáveis, licença incompatível</td><td>0 CVEs; licenças revisadas</td></tr>
+<tr><td>7. CI em hardware real</td><td>GitHub Actions</td><td>Diferenças de SO, cgo, arm64, Kubernetes</td><td>achou o erro do btrfs (12.4)</td></tr>
+</tbody></table></div>
+
+<h3>12.1 Testes unitários com fakes</h3>
+<p>Os comandos recebem interfaces (<code>Engine</code>, <code>Scanner</code>, <code>registry.Client</code>), então o teste injeta fakes que só guardam o que receberam. Assim dá para provar, em milissegundos e no Windows, as regras que importam: <code>--build-arg</code> chega ao motor; uma imagem multi-arch é escaneada uma vez por arquitetura; uma imagem reprovada <b>não</b> é publicada; <code>--immutable</code> para antes do build; o segredo é mascarado. A política tem testes próprios: secret reprova sempre, CVE crítica com correção reprova, o teto de CVEs funciona, exceção vencida não vale, exceção sem dono é recusada.</p>
+<div class="code"><div class="file"><span>internal/cli/cli_test.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/cli_test.go@@</code></pre></div>
+<div class="code"><div class="file"><span>internal/scan/policy_test.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/scan/policy_test.go@@</code></pre></div>
+<pre class="out"><code>@@saida test.txt@@</code></pre>
+<p>Um teste deste nível pegou um erro de desenho. A primeira versão do <code>scan</code> montava a referência OCI (<code>layout.NewReference</code>) dentro da CLI, e no Windows isso falhou porque a função valida o caminho <code>/var/tmp/...</code>. A correção foi tirar da CLI o conhecimento sobre o containers/image: o <code>scan.Target</code> passou a carregar só o diretório ou o nome remoto, e o pacote <code>scan</code> monta a referência.</p>
+
+<h3>12.2 Vulnerabilidades</h3>
+<p>Na v0.2, com o buildah dentro, o govulncheck achou problemas em duas dependências indiretas, corrigidos pedindo versões novas delas:</p>
+<pre class="out"><code>Vulnerability #1: GO-2026-6348  Found in: google.golang.org/grpc@v1.82.1   Fixed in: v1.83.1
+Vulnerability #2: GO-2026-6253  Found in: github.com/moby/go-archive@v0.2.0 Fixed in: v0.3.0</code></pre>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">go get google.golang.org/grpc@v1.83.1 github.com/moby/go-archive@v0.3.0
+go mod tidy</code></pre></div>
+<p>Na v0.3, com Syft, Grype, Gitleaks e Go 1.26.8, o resultado local e no CI é <code>No vulnerabilities found.</code> Depois de atualizar indiretas, rode <b>tudo</b> de novo (testes, imagem, laboratório): os autores do buildah testaram com as versões antigas, e quem garante as novas é você.</p>
+
+<h3>12.3 Licenças: a ferramenta não decide sozinha</h3>
+<p>Resultado para o forja v0.3: 159 Apache-2.0, 113 MIT, 72 BSD-3-Clause, 11 BSD-2-Clause, 10 MPL-2.0, 3 ISC, 2 Unlicense, e casos isolados. Três pontos exigiram leitura humana:</p>
+<ul>
+<li><b>Um "GPL-2.0"</b>: <code>github.com/spdx/tools-golang</code>, que vem pelo Syft. O <code>LICENSE.code</code> do repositório diz que o código pode ser usado sob Apache-2.0 <b>ou</b> GPL-2.0-or-later, à escolha de quem usa. O forja usa sob Apache-2.0.</li>
+<li><b>Cinco "Unknown"</b>: <code>deitch/magic</code>, <code>in-toto/attestation</code> e <code>json-canonicalization</code> são Apache-2.0, com o cabeçalho curto que o detector não reconhece. Os outros eram o próprio forja antes do arquivo LICENSE.</li>
+<li><b>MPL-2.0</b> é copyleft por arquivo: pode usar; só modificações nesses arquivos precisam ser publicadas.</li>
+</ul>
+<div class="callout risk"><span class="tag">Ferramenta e toolchain na mesma versão</span><p>O <code>go-licenses</code> instalado com Go 1.26.5 falhou no projeto com Go 1.26.8 (<code>Package go/constant does not have module info</code>). Ferramentas que analisam código Go leem a biblioteca padrão do toolchain; reinstale-as (<code>go install ...@versão</code>) quando o toolchain mudar.</p></div>
+
+<h3>12.4 O que só o CI mostrou</h3>
+<p>No primeiro push, o job <code>test</code> falhou num passo que passava aqui:</p>
+<pre class="out"><code>go vet -tags containers_image_openpgp ./...
+# go.podman.io/storage/drivers/btrfs
+fatal error: btrfs/version.h: No such file or directory</code></pre>
+<p>No Windows, os arquivos <code>_linux.go</code> não são compilados. No Linux com <code>CGO_ENABLED=0</code>, os arquivos com <code>import "C"</code> também não. Só no Linux <b>com</b> cgo, que é o padrão do runner, o driver btrfs é compilado e pede os headers dele. A tag <code>exclude_graphdriver_btrfs</code>, que o Dockerfile já usava, faltava no vet e nos testes do CI. É a mesma lição do capítulo 10, vista de outro ângulo: cada combinação de sistema operacional e cgo é um programa diferente.</p>
+</section>
+

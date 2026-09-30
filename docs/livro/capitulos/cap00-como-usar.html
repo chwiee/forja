@@ -1,0 +1,18 @@
+<!-- ============================================================ 00 -->
+<section class="chapter" id="c0">
+<div class="ch-num">CAPÍTULO 00</div>
+<h2>Como usar este livro</h2>
+<p>Este livro constrói o <b>forja v0.3</b>, que está em produção no repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a>. É um CLI que recebe o Dockerfile da aplicação e executa <code>exists → build → scan → gate → push</code>: builda com a biblioteca do buildah, escaneia CVEs (Syft e Grype), secrets (Gitleaks) e configuração, dá uma nota de 0 a 100, e só publica se a imagem passar. É um binário estático que roda em qualquer imagem Linux, em amd64 e arm64, sem Docker nem daemon dentro dele. A imagem oficial é assinada com cosign.</p>
+<p>Tudo o que aparece como <span class="badge ok">testado</span> foi compilado e executado no seu PC em 29/09/2026, e as saídas são reais. Além do seu PC, o CI do repositório repete os testes a cada push, em runners amd64 e <b>arm64 nativos</b> e num pod do Kubernetes: o capítulo 18 mostra o resultado. O que depende de um runner ou cluster que não existe aqui aparece como <span class="badge todo">não testado</span>. Esses itens são o ponto de partida do seu desafio.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Parte</th><th>Capítulos</th><th>Resultado</th></tr></thead>
+<tbody>
+<tr><td>Visão</td><td>01–03</td><td>Onde o forja roda, as ferramentas, o que instalar</td></tr>
+<tr><td>Fundamentos</td><td>04–06</td><td>Go sem classes, o projeto do zero, a casca Cobra</td></tr>
+<tr><td>Bibliotecas</td><td>07–12</td><td>Importar, ler e usar buildah, Syft, Grype e Gitleaks, os 4 erros reais até funcionar, e os testes</td></tr>
+<tr><td>Execução</td><td>13–18</td><td>Qualquer imagem, permissões mínimas, Windows, multi-arch no EKS, Kubernetes e o CI no GitHub</td></tr>
+<tr><td>Fechamento</td><td>19–20</td><td>Riscos e os desafios, resolvidos</td></tr>
+</tbody></table></div>
+<div class="callout"><span class="tag">Regra de ouro</span><p>Digite o código em vez de copiar. O código completo e validado está no repositório <a href="https://github.com/chwiee/forja">chwiee/forja</a> (cópia local em <code>C:\wb\estudos\forja-referencia</code>). Use-o para comparar quando travar, não para pular etapas.</p></div>
+</section>
+

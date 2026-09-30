@@ -1,0 +1,50 @@
+<!-- ============================================================ 01 -->
+<section class="chapter" id="c1">
+<div class="ch-num">CAPÍTULO 01</div>
+<h2>Arquitetura: um binário, três lugares</h2>
+<p>O forja é um único binário Linux estático que traz o código do buildah compilado dentro. Ele é publicado numa imagem distroless multi-arch e pode ser copiado para qualquer outra imagem; em todos os ambientes, é o mesmo binário.</p>
+<div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  subgraph win["Seu Windows"]
+    ps["PowerShell&lt;br/&gt;função forja"] --&gt; dd["Docker Desktop&lt;br/&gt;VM Linux"]
+    exe["forja.exe nativo&lt;br/&gt;exists / inspect"]
+  end
+  subgraph ci["CI"]
+    gha["Runner GitHub&lt;br/&gt;docker run"]
+    pod["Pod Kubernetes&lt;br/&gt;ARC ou Job"]
+  end
+  img[("imagem do forja&lt;br/&gt;142 MB · amd64 + arm64 · assinada")]
+  dd --&gt; img
+  gha --&gt; img
+  pod --&gt; img
+  df["Dockerfile + contexto&lt;br/&gt;do usuário (/workspace)"] --&gt; img
+  img --&gt; b["build&lt;br/&gt;buildah lib + chroot"]
+  b --&gt; st[("storage local&lt;br/&gt;/var/lib/containers")]
+  st --&gt; p["push&lt;br/&gt;buildah.Push"]
+  p --&gt; reg[("Registry")]
+  exe --&gt; reg
+</pre>
+</div>
+<h3>O que acontece num <code>forja build --push</code></h3>
+<ol class="steps">
+<li><b>Lê o Dockerfile do usuário</b>, montado em <code>/workspace</code>. O forja não sabe nada da aplicação; ele recebe um diretório com um Dockerfile.</li>
+<li><b>Baixa a imagem base</b> do <code>FROM</code>, conferindo a política de <code>/etc/containers/policy.json</code>.</li>
+<li><b>Executa cada <code>RUN</code> num chroot</b>. O isolamento é código Go do próprio buildah, sem <code>runc</code> nem <code>crun</code>, e usa a rede do container do forja.</li>
+<li><b>Grava as camadas</b> no storage local (<code>/var/lib/containers</code>).</li>
+<li><b>Publica</b> com <code>buildah.Push</code> e devolve o digest. O <code>--immutable</code> recusa sobrescrever uma tag existente.</li>
+</ol>
+<h3>O que o forja exige do ambiente <span class="badge ok">testado</span></h3>
+<p>Usar a lib em vez do binário tira o buildah da imagem, mas não tira o que o buildah pede ao sistema. Esta é a lista final, descoberta nos capítulos 10 e 14:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Exigência</th><th>Por quê</th></tr></thead>
+<tbody>
+<tr><td>Internet ou mirror do banco de CVEs</td><td>O Grype baixa o banco de <code>grype.anchore.io</code> e guarda em <code>/var/tmp/forja-db</code> (cap. 11)</td></tr>
+<tr><td>Rodar como root <b>dentro</b> do container</td><td>O buildah cria diretórios e faz <code>chown</code> ao montar o contexto</td></tr>
+<tr><td>12 capabilities (lista no cap. 14), incluindo <code>SYS_ADMIN</code></td><td>Montar overlay e chroot; dar aos <code>RUN</code> as capabilities padrão</td></tr>
+<tr><td>Kernel Linux</td><td>Namespaces e overlayfs. No Windows, o Docker Desktop fornece a VM</td></tr>
+<tr><td>4 diretórios graváveis</td><td><code>/var/tmp</code>, <code>/var/lib/containers</code>, <code>/run</code>, <code>/var/cache/containers</code></td></tr>
+<tr><td>Binário com cgo</td><td>O buildah usa uma função em C que roda antes do Go iniciar (cap. 10). Linkado estaticamente com a musl, não depende da imagem (cap. 13)</td></tr>
+</tbody></table></div>
+</section>
+

@@ -1,0 +1,55 @@
+PS> forja run -t registry:5000/isca/limpa:1 --tls-verify=false testdata/iscas/limpa
+[2/5] build
+[3/5] scan
+[4/5] gate: aprovada
+SCAN  registry:5000/isca/limpa:1
+NOTA  92/100 (mínimo 70)  APROVADA   pacotes: 16  achados: 4  exceções: 0
+  TIPO           ID              SEVERIDADE  ONDE                      DESCONTO
+  vulnerability  CVE-2026-85091  high        zlib 1.3.2-r0             -5
+  vulnerability  CVE-2025-60876  medium      busybox 1.37.0-r20        -1
+  vulnerability  CVE-2025-60876  medium      busybox-binsh 1.37.0-r20  -1
+  vulnerability  CVE-2025-60876  medium      ssl_client 1.37.0-r20     -1
+[5/5] push
+PUSH OK   registry:5000/isca/limpa:1  sha256:5f9abe6d239e3a4328db208a5159bb9f49aeb42a84a36cc511e4dcb95a13efb5
+exit=0   (75 s, incluindo o primeiro download do banco de CVEs)
+
+PS> forja run -t registry:5000/isca/secret:1 --build-arg "API_TOKEN=$fake" --sarif forja.sarif testdata/iscas/secret
+SCAN  registry:5000/isca/secret:1
+NOTA  0/100 (mínimo 70)  REPROVADA   pacotes: 16  achados: 10  exceções: 0
+  TIPO           ID              SEVERIDADE  ONDE                        DESCONTO
+  secret         github-pat      -           histórico, etapa 5          -40
+  secret         github-pat      -           histórico, etapa 6          -40
+  secret         github-pat      -           /etc/app.conf:1 (camada 2)  -40
+  sensitive_env  DB_PASSWORD     -           ENV                         -25
+  sensitive_env  API_TOKEN       -           histórico, etapa 5          -25
+  sensitive_env  API_TOKEN       -           histórico, etapa 6          -25
+  vulnerability  CVE-2026-85091  high        zlib 1.3.2-r0               -5
+  ...
+  REPROVOU: nota 0 abaixo do mínimo 70
+  REPROVOU: secret encontrado: github-pat em histórico, etapa 5
+  REPROVOU: secret encontrado: github-pat em histórico, etapa 6
+  REPROVOU: secret encontrado: github-pat em /etc/app.conf:1 (camada 2)
+[4/5] gate: REPROVADA, nada foi publicado
+exit=3   (5 s: banco de CVEs em cache)
+
+PS> forja run -t registry:5000/isca/cve:1 --tls-verify=false testdata/iscas/cve
+SCAN  registry:5000/isca/cve:1
+NOTA  40/100 (mínimo 70)  REPROVADA   pacotes: 14  achados: 92  exceções: 0
+  vulnerability  CVE-2022-37434  critical  zlib 1.2.12-r0 → 1.2.12-r2  -15
+  vulnerability  CVE-2022-48174  critical  busybox 1.31.1-r22          -15
+  vulnerability  CVE-2024-5535   critical  libcrypto1.1 1.1.1n-r0      -15
+  ...            e mais 77 achados (use -o json)
+  REPROVOU: nota 40 abaixo do mínimo 70
+  REPROVOU: CVE-2022-37434 crítica com correção (zlib 1.2.12-r0 → 1.2.12-r2)
+[4/5] gate: REPROVADA, nada foi publicado
+exit=3
+
+PS> forja run --platform "linux/amd64,linux/arm64" -t registry:5000/multi:scan --tls-verify=false testdata/multi
+escaneando registry:5000/multi:scan (linux/arm64)...
+escaneando registry:5000/multi:scan (linux/amd64)...
+[4/5] gate: aprovada
+SCAN  registry:5000/multi:scan (linux/arm64)
+NOTA  87/100 (mínimo 70)  APROVADA   pacotes: 16  achados: 5
+SCAN  registry:5000/multi:scan (linux/amd64)
+NOTA  87/100 (mínimo 70)  APROVADA   pacotes: 16  achados: 5
+PUSH OK   registry:5000/multi:scan  sha256:55fe74508693f57de94ecc02646b35859bdda75c9b2506eb47a59ad8ec7281f1

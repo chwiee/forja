@@ -1,39 +1,72 @@
-# forja — branch de estudo
+# forja
 
-Este branch reconstrói o forja em 4 etapas, na ordem do *Manual da Forja*.
-Cada etapa compila e tem os testes passando. Para ver exatamente o que uma
-etapa acrescenta à anterior:
+CLI de CI que builda, escaneia e publica imagens de container a partir do
+Dockerfile da aplicação, sem Docker nem daemon: usa as bibliotecas do buildah,
+Syft, Grype e Gitleaks dentro do próprio processo. A imagem só é publicada se
+passar no gate de segurança (CVEs, secrets, configuração), com nota de 0 a 100.
 
-    git diff estudo-e1 estudo-e2
+```
+forja run --registry ecr --name ${{ github.repository }} --tag ${{ github.ref }} --immutable .
+  [1/5] exists   a tag ainda não existe
+  [2/5] build    Dockerfile → imagem (uma ou várias arquiteturas)
+  [3/5] scan     Syft + Grype (CVEs), Gitleaks (secrets), ENV/ARG/USER
+  [4/5] gate     reprovada: exit 3 e nada é publicado
+  [5/5] push     aprovada: publica e imprime o digest
+```
 
-| Tag | Etapa | Capítulos do livro |
-|---|---|---|
-| `estudo-e1` | casca Cobra + consulta ao registry (`exists`, `inspect`) | 4, 5, 6, 8 |
-| `estudo-e2` | motor buildah: `build`, `push`, `manifest`, multi-arch, imagem estática | 7, 9, 10, 13, 16 |
-| `estudo-e3` | scan (Syft, Grype, Gitleaks), nota, gate e `run` | 11, 12, 14, 15 |
-| `estudo-e4` | produção: `--registry`/ECR, CI, livro — igual à `main` | 17, 18, 19 |
+- Binário estático (cgo + musl): roda em qualquer imagem Linux, amd64 e arm64.
+- Imagem oficial multi-arch e assinada (cosign): `ghcr.io/chwiee/forja`.
+- Registries por nome: `--registry ecr` (conta central, us-east-1) ou `--registry ghcr`.
+- Credencial do ECR pelo SDK da AWS: Pod Identity no EKS, OIDC no GitHub Actions.
+- Permissões mínimas: root no container + 12 capabilities (inclui `SYS_ADMIN`).
+- Documentação completa: *Manual da Forja* (fonte em `docs/livro/`).
 
-## Etapa atual: e3 — scan, nota e gate
+## Uso rápido
 
-O que tem: `forja scan` (Syft + Grype para CVEs, Gitleaks para secrets em todas
-as camadas e no histórico, ENV/ARG/USER), a política com pesos, tetos e
-exceções (`internal/scan/defaults/policy.yaml`), saída em tabela/JSON/SARIF, e
-`forja run`: exists → build → scan → gate → push. Imagens-isca em `testdata/iscas`.
+```sh
+docker login ghcr.io
+FORJA_IMAGE=ghcr.io/chwiee/forja:0.4.1 ci/forja.sh run --registry ghcr --name org/app --tag v1.0.0 .
+```
 
-Validar (com o registry `lab` da etapa 2):
+ECR: defina `FORJA_ECR_ACCOUNT` (conta central) e tenha credencial AWS no
+ambiente (Pod Identity, OIDC ou variáveis `AWS_*`). Exemplos prontos em
+`examples/github-actions/` e `deploy/k8s-pod.yaml`.
 
-    go test -tags containers_image_openpgp ./...
-    docker build -t forja:e3 .
-    FORJA="docker run --rm --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE 
-      --cap-add FOWNER --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE --cap-add SETFCAP 
-      --cap-add SETGID --cap-add SETPCAP --cap-add SETUID --cap-add SYS_CHROOT 
-      --network lab -v $PWD:/workspace -v e3-tmp:/var/tmp forja:e3"
-    $FORJA run -t registry:5000/estudo/e3:1 --tls-verify=false testdata/multi
-    TOKEN="ghp_$(head -c 300 /dev/urandom | tr -dc A-Za-z0-9 | head -c 36)"
-    $FORJA run -t registry:5000/estudo/e3:secret --build-arg "API_TOKEN=$TOKEN" --tls-verify=false testdata/iscas/secret
+No Windows (PowerShell): `. .\scripts\forja.ps1` e depois `forja run ...`.
 
-Esperado: a primeira APROVADA com `PUSH OK` (exit 0); a segunda REPROVADA com
-`REPROVOU: secret encontrado` e `nada foi publicado` (exit 3).
+## Comandos
 
-Use um token ALEATÓRIO: o Gitleaks ignora tokens de baixa entropia
-(`ghp_abcdef...0123456789` passa sem ser acusado como secret).
+| Comando | O que faz |
+|---|---|
+| `run` | exists → build → scan → gate → push |
+| `build` | builda (`--platform linux/amd64,linux/arm64` gera manifest list) |
+| `scan` | nota de segurança de uma imagem local ou `--remote` |
+| `push` | publica (`--immutable` recusa tag existente) |
+| `manifest` | junta imagens de arquiteturas diferentes num nome |
+| `exists`, `inspect` | consultas ao registry (funcionam no Windows nativo) |
+
+Todos aceitam `--registry NOME --name REPO --tag TAG` no lugar do endereço
+completo. `--tag` aceita `refs/tags/v1.2.0` (vira `v1.2.0`) e
+`refs/heads/feature/x` (vira `feature-x`).
+
+Exit codes: `0` ok · `1` erro · `2` tag inexistente/já existente · `3` reprovada no gate.
+
+## Configuração
+
+| Variável | Uso |
+|---|---|
+| `FORJA_ECR_ACCOUNT`, `FORJA_ECR_REGION`, `FORJA_ECR_HOST` | conta, região e host do ECR |
+| `FORJA_REGISTRIES` | arquivo de registries próprio (padrão: `internal/registries/defaults/registries.yaml`) |
+| `FORJA_DB_DIR` | cache do banco de CVEs (padrão: `/var/tmp/forja-db`) |
+| `STORAGE_DRIVER` | `vfs` (padrão) ou `overlay` |
+
+## Desenvolvimento
+
+```sh
+go test -tags containers_image_openpgp ./...
+docker build -t forja:dev .
+```
+
+O CI (`.github/workflows/ci.yml`) tem 7 jobs: testes, imagem multi-arch
+assinada, e2e em runners amd64 e arm64 nativos, manifest, pod no Kubernetes
+(kind) e ECR emulado (floci).

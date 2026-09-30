@@ -1,0 +1,5 @@
+(forja arm64 EMULADO pelo QEMU num host amd64, Dockerfile com RUN)
+STEP 2/3: RUN apk add --no-cache file && echo "buildado em $(uname -m)" > /build-arch.txt
+Error during reexec(...): No such file or directory
+erro: build: building at STEP "RUN apk add ...": exit status 1
+(o mesmo com --privileged)

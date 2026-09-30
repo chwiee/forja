@@ -1,0 +1,25 @@
+<!-- ============================================================ 10 -->
+<section class="chapter" id="c10">
+<div class="ch-num">CAPÍTULO 10</div>
+<h2>Quatro erros até funcionar</h2>
+<p>A primeira versão do forja compilou de primeira e falhou quatro vezes seguidas dentro da imagem distroless. Cada erro foi resolvido do mesmo jeito: copiar um trecho da mensagem, achar com <code>git grep</code> o código do buildah que a gera, ler e entender a condição. Esta é a parte mais importante do livro, porque é o que você vai fazer sozinho quando o seu código quebrar.</p>
+
+<h3>Erro 1 — sem permissão de mount</h3>
+<pre class="out"><code>erro: build: mounting an overlay over build context directory: ... mount overlay: ... operation not permitted</code></pre>
+<p><b>Leitura:</b> <code>imagebuildah/build_linux.go</code>, função <code>platformSetupContextDirectoryOverlay</code>. O buildah <b>sempre</b> monta um overlay por cima do diretório de contexto, para que um <code>RUN</code> não altere seus arquivos. Montar exige privilégio.<br><b>Correção:</b> dar permissões ao container (primeiro <code>--privileged</code>, para ver funcionar; o mínimo real está no cap. 14).</p>
+
+<h3>Erro 2 — overlay sobre overlay</h3>
+<pre class="out"><code>erro: build: mounting an overlay over build context directory: ... mount overlay: ... invalid argument</code></pre>
+<p><b>Leitura:</b> o diretório temporário do overlay fica em <code>/var/tmp</code>, que está no disco do próprio container, que já é um overlay. O kernel não aceita overlay em cima de overlay.<br><b>Correção:</b> <code>/var/tmp</code> num volume (<code>-v forja-tmp:/var/tmp</code>; no Kubernetes, um <code>emptyDir</code>). A pasta do Windows montada em <code>/workspace</code> funcionou como camada de baixo sem problema.</p>
+
+<h3>Erro 3 — o netavark que nunca seria usado</h3>
+<pre class="out"><code>erro: build: creating build container: could not find "netavark" in one of [/usr/local/libexec/podman ...]</code></pre>
+<p><b>Leitura:</b> <code>new.go</code> chama <code>getNetworkInterface</code> sempre que <code>options.NetworkInterface</code> é <code>nil</code>. Em <code>vendor/go.podman.io/common/libnetwork/network/interface.go</code>, o único backend aceito é o netavark, e o binário tem que existir, mesmo que nunca seja executado. Configurar só <code>NamespaceOptions</code> com a rede do host não bastou.<br><b>Correção:</b> preencher <code>NetworkInterface</code> com a implementação <code>hostNetwork</code> (cap. 9.3).</p>
+
+<h3>Erro 4 — compilou, mas não funciona</h3>
+<pre class="out"><code>OK: 13 MiB in 24 packages
+process exited with error: parsing PID "": strconv.Atoi: parsing "": invalid syntax</code></pre>
+<p>O <code>RUN apk add</code> <b>rodou</b>: os pacotes foram instalados. O erro veio depois.<br><b>Leitura:</b> <code>git grep 'parsing PID'</code> leva a <code>go.podman.io/storage/pkg/unshare/unshare_linux.go</code>: o processo pai espera o filho escrever o próprio PID num pipe. Quem escreve é <code>_containers_unshare()</code>, uma função em C chamada por um <code>__attribute__((constructor))</code> em <code>unshare_cgo.go</code>, que só existe com a build tag <code>cgo</code>. O primeiro Dockerfile compilava com <code>CGO_ENABLED=0</code>, então ninguém escrevia o PID.<br><b>Correção:</b> <code>CGO_ENABLED=1</code>. A primeira versão linkou com a glibc e usou <code>distroless/base</code> (84,7 MB), o que prendeu o binário a imagens com glibc nova. A solução definitiva, estático com musl, está no capítulo 13.</p>
+<div class="callout risk"><span class="tag">A lição</span><p>"Compila" não prova nada sobre bibliotecas que dependem do sistema operacional. O buildah compilado sem cgo passou no <code>go build</code>, no <code>go vet</code> e no cross-compile, e só falhou executando um <code>RUN</code> de verdade. Para esse tipo de lib, o único teste que vale é rodar no ambiente-alvo.</p></div>
+</section>
+

@@ -1,0 +1,30 @@
+<!-- ============================================================ 16 -->
+<section class="chapter" id="c17">
+<div class="ch-num">CAPÍTULO 17</div>
+<h2>Kubernetes <span class="badge ok">testado</span></h2>
+<p>O forja roda num pod com root <b>dentro</b> de um user namespace (<code>hostUsers: false</code>), as 12 capabilities do capítulo 14, raiz somente leitura e cinco volumes. O mesmo manifesto passou em dois clusters: no <code>kind</code> do seu Docker Desktop, com user namespace, e no <code>kind</code> do CI, sem ele (veja 17.3).</p>
+
+<h3>17.1 O pod de produção</h3>
+<p>Um initContainer clona o repositório da aplicação para o <code>/workspace</code>; o <code>nodeSelector</code> escolhe a arquitetura (capítulo 16).</p>
+<div class="code"><div class="file"><span>deploy/k8s-pod.yaml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo deploy/k8s-pod.yaml@@</code></pre></div>
+
+<h3>17.2 O pod de teste</h3>
+<p>Mesmo <code>securityContext</code> e mesmos volumes; só o <code>/workspace</code> vem de um ConfigMap e o push vai para um registry dentro do cluster.</p>
+<div class="code"><div class="file"><span>ci/k8s-e2e.yaml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo ci/k8s-e2e.yaml@@</code></pre></div>
+
+<h3>17.3 Os dois resultados</h3>
+<p><b>No kind do Docker Desktop</b>, com <code>hostUsers: false</code> (Kubernetes 1.36.4, containerd 2.3.4, kernel 6.18):</p>
+<pre class="out"><code>@@saida k8s-local.txt@@</code></pre>
+<pre class="out"><code>$ kubectl get pod forja-build -o jsonpath=...
+hostUsers=false readOnlyRoot=true caps=["SYS_ADMIN","CHOWN","DAC_OVERRIDE","FOWNER","FSETID","KILL","NET_BIND_SERVICE","SETFCAP","SETGID","SETPCAP","SETUID","SYS_CHROOT"]</code></pre>
+<p>Com <code>hostUsers: false</code>, o kubelet recusa o pod se o runtime não suportar user namespace. Como o pod chegou a <code>Succeeded</code>, o isolamento foi aplicado.</p>
+<p><b>No kind do CI</b>, o primeiro teste falhou antes de o forja iniciar, e não por causa dele:</p>
+<pre class="out"><code>Failed to create pod sandbox: ... runc create failed: unable to start container process:
+error during container init: error mounting "sysfs" to rootfs at "/sys": ... operation not permitted</code></pre>
+<p>No runner, o kind é um container dentro do Docker, e o sandbox do pod (o container <code>pause</code>) não consegue montar o <code>/sys</code> dentro do user namespace nesse aninhamento. Num nó EKS não existe esse aninhamento. O CI então remove só a linha <code>hostUsers</code> (com o motivo comentado no workflow) e prova todo o resto: capabilities, raiz somente leitura, volumes e AppArmor <code>Unconfined</code>. Resultado: <code>fase do pod: Succeeded</code>, nota 92, <code>PUSH OK</code> (capítulo 18).</p>
+
+<div class="callout risk"><span class="tag">Pod Security Admission</span><p>Das 12 capabilities, só <code>SYS_ADMIN</code> fica fora do nível <code>baseline</code>, e o AppArmor <code>Unconfined</code> também. O namespace dos builds precisa do nível <code>privileged</code> ou de uma exceção no Kyverno/Gatekeeper. Isolar esse namespace é parte do desenho.</p></div>
+<div class="callout risk"><span class="tag">Validar no EKS antes de produção</span><p>O <code>hostUsers: false</code> foi provado no kind do Docker Desktop. No EKS, ele depende da versão do Kubernetes (1.33 ou mais nova), do containerd 2.x e do kernel do nó (Amazon Linux 2023 ou Bottlerocket recentes). Rode o <code>ci/k8s-e2e.yaml</code> uma vez em cada node group, amd64 e Graviton, antes de liberar.</p></div>
+<div class="callout"><span class="tag">ARC e o shell</span><p>No Actions Runner Controller em "kubernetes mode", os steps <code>run:</code> precisam de shell na imagem do job, e o distroless não tem. Opções: o runner dispara o pod do forja com <code>kubectl</code> (como o job <code>k8s</code> do CI faz); usar a variante <code>:debug</code> do distroless; ou colocar o forja na imagem do runner com um <code>COPY --from</code> (capítulo 13.4).</p></div>
+</section>
+

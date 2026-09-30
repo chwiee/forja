@@ -1,0 +1,59 @@
+<!-- ============================================================ 15 -->
+<section class="chapter" id="c16">
+<div class="ch-num">CAPÍTULO 16</div>
+<h2>Multi-arquitetura e nós mistos no EKS</h2>
+<p>Num EKS com nós x86 e Graviton (arm64), duas coisas precisam ser multi-arch: a imagem do <b>forja</b>, para o pod de build subir em qualquer nó, e as imagens das <b>aplicações</b>, para cada pod receber o binário da arquitetura do nó. As duas funcionam via manifest list: um nome só (<code>app:1.0</code>) apontando para uma imagem por arquitetura. O runtime do nó escolhe a dele.</p>
+
+<h3>16.1 Duas estratégias</h3>
+<div class="table-wrap"><table>
+<thead><tr><th></th><th>A. Tudo num nó, com emulação</th><th>B. Cada arquitetura no próprio nó (recomendada)</th></tr></thead>
+<tbody>
+<tr><td>Comando</td><td><code>forja build --platform linux/amd64,linux/arm64 --push</code></td><td><code>forja build -t app:1.0-arm64 --push</code> em cada nó + <code>forja manifest app:1.0 ...</code></td></tr>
+<tr><td>Como o <code>RUN</code> da outra arquitetura roda</td><td>QEMU no kernel do nó (binfmt_misc)</td><td>nativo, sem emulação</td></tr>
+<tr><td>Pré-requisito no EKS</td><td>registrar o QEMU nos nós: DaemonSet privilegiado (<code>tonistiigi/binfmt</code>)</td><td>node groups das duas arquiteturas e <code>nodeSelector</code></td></tr>
+<tr><td>Velocidade</td><td>o <code>RUN</code> emulado é bem mais lento (compilações, <code>npm install</code>)</td><td>velocidade nativa nas duas</td></tr>
+<tr><td>Fidelidade</td><td>emulação pode divergir do hardware real</td><td>testado no hardware de destino</td></tr>
+<tr><td>Testado aqui</td><td><span class="badge ok">sim, completo</span></td><td><span class="badge ok">sim: arm64 nativo no CI</span> (16.4)</td></tr>
+</tbody></table></div>
+
+<h3>16.2 O código: <code>--platform</code> e <code>forja manifest</code></h3>
+<p>No <code>build_linux.go</code> (capítulo 9), <code>Platforms</code> preenchido faz o buildah buildar uma imagem por plataforma, sem nome, e juntar todas num manifest list chamado com a tag. O <code>Push</code> detecta que o nome é de um manifest list (<code>libimage.LookupManifestList</code>) e publica o list com todas as imagens (<code>CopyAllImages</code>). A receita veio do mesmo lugar de sempre: <code>cmd/buildah/manifest.go</code>, funções <code>manifestCreateCmd</code> e <code>manifestPush</code>.</p>
+<div class="code"><div class="file"><span>internal/cli/manifest.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/manifest.go@@</code></pre></div>
+<pre class="out"><code>@@saida help-manifest.txt@@</code></pre>
+
+<h3>16.3 Teste A: duas arquiteturas num nó só <span class="badge ok">testado</span></h3>
+<p>O Dockerfile de teste grava a arquitetura em que o <code>RUN</code> rodou e, ao executar, mostra a arquitetura atual e a do binário do BusyBox:</p>
+<div class="code"><div class="file"><span>C:\wb\estudos\forja-lab\multi\Dockerfile</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-plaintext">@@arquivo testdata/multi/Dockerfile@@</code></pre></div>
+<pre class="out"><code>@@saida multi-a.txt@@</code></pre>
+<p>Um nome, dois binários. O <code>RUN</code> do arm64 rodou em arm64 porque o Docker Desktop registra o QEMU no kernel da VM. Num nó do EKS isso não vem pronto.</p>
+
+<h3>16.4 Teste B: cada arquitetura no próprio nó</h3>
+<p>Aqui não existe nó arm64 de verdade, então o "nó arm64" foi simulado rodando a variante arm64 do forja sob emulação:</p>
+<pre class="out"><code>@@saida multi-b.txt@@</code></pre>
+<p>O forja arm64 fez pull, build e push, e o <code>forja manifest</code> juntou as duas. Mas com um Dockerfile <b>sem</b> <code>RUN</code>. Com <code>RUN</code>, o forja arm64 emulado falhou:</p>
+<pre class="out"><code>@@saida qemu-error.txt@@</code></pre>
+<p><b>Leitura</b> (<code>git grep "Error during reexec"</code>): em <code>unshare.c</code>, para executar o <code>RUN</code>, o buildah re-executa o próprio binário a partir de uma cópia em memória (<code>fexecve</code> de um memfd). Com o binário arm64 emulado num kernel amd64, o kernel precisa entregar essa cópia ao QEMU, e isso falha. Num Graviton real não há QEMU nesse caminho, e o buildah é suportado em arm64 pelos próprios mantenedores. <b>Confirmado no CI</b>: no runner <code>ubuntu-24.04-arm</code>, o forja arm64 nativo executou o <code>RUN</code> e a imagem respondeu <code>rodando em aarch64 | buildado em aarch64</code> (capítulo 18). O erro era só da emulação.</p>
+
+<h3>16.5 O desenho no EKS</h3>
+<div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  push["git push / tag"] --&gt; x86["pod forja&lt;br/&gt;nó amd64&lt;br/&gt;app:1.0-amd64"]
+  push --&gt; arm["pod forja&lt;br/&gt;nó Graviton arm64&lt;br/&gt;app:1.0-arm64"]
+  x86 --&gt; reg[("registry")]
+  arm --&gt; reg
+  reg --&gt; man["forja manifest&lt;br/&gt;app:1.0"]
+  man --&gt; reg
+  reg --&gt; nodes["pods da aplicação&lt;br/&gt;em qualquer nó"]
+</pre>
+</div>
+<ol class="steps">
+<li><b>A mesma imagem do forja nos dois pods.</b> <code>ghcr.io/chwiee/forja:0.3.0</code> é multi-arch; o nó puxa a variante dele.</li>
+<li><b>Um pod por arquitetura</b>, com <code>nodeSelector: kubernetes.io/arch</code> e a tag com sufixo (<code>-amd64</code>, <code>-arm64</code>). O manifesto do capítulo 17.2 já vem com isso.</li>
+<li><b>Um passo final</b> roda <code>forja manifest</code> em qualquer nó, e nem precisa de capabilities: ele só lê e escreve no registry.</li>
+<li><b>Os pods da aplicação</b> usam <code>app:1.0</code>, sem sufixo, em qualquer node group.</li>
+</ol>
+<p>No GitHub Actions, o mesmo desenho usa runners das duas arquiteturas e um job final. O CI do próprio forja faz exatamente isso (capítulo 18) <span class="badge ok">testado</span>:</p>
+<div class="code"><div class="file"><span>.github/workflows/forja-multiarch.yml</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-yaml">@@arquivo examples/github-actions/forja-multiarch.yml@@</code></pre></div>
+</section>
+

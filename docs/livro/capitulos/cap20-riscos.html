@@ -1,0 +1,35 @@
+<!-- ============================================================ 17 -->
+<section class="chapter" id="c20">
+<div class="ch-num">CAPÍTULO 20</div>
+<h2>Riscos e como mitigar</h2>
+<p>Importar buildah, Syft, Grype e Gitleaks traz para dentro do forja 983 módulos, com código, bugs, CVEs e licenças. Os riscos abaixo apareceram de verdade na construção.</p>
+</section>
+</article>
+<div class="table-wrap wide"><table>
+<thead><tr><th>Risco</th><th>O que aconteceu aqui</th><th>Mitigação</th></tr></thead>
+<tbody>
+<tr><td>Compila mas não funciona</td><td>buildah sem cgo falhou só num <code>RUN</code> real</td><td>Teste no ambiente-alvo (imagem + lab) a cada mudança de dependência</td></tr>
+<tr><td>Binário preso à imagem</td><td>binário dinâmico exigia glibc 2.41; slim sem certificados</td><td>Estático com musl; configuração e CAs embutidos (cap. 13)</td></tr>
+<tr><td>Emulação não é hardware</td><td>forja arm64 no QEMU falhou no reexec do <code>RUN</code></td><td>Build nativo por arquitetura; validar em Graviton real</td></tr>
+<tr><td>QEMU nos nós</td><td>estratégia A exige binfmt registrado no kernel do nó</td><td>Preferir a estratégia B; se usar A, DaemonSet dedicado e auditado</td></tr>
+<tr><td>Dependência escondida em binário</td><td>netavark exigido mesmo sem uso</td><td>Ler o código; substituir a peça por implementação própria</td></tr>
+<tr><td>CVE em dependência indireta</td><td>grpc e go-archive vulneráveis via buildah</td><td><code>govulncheck</code> no CI bloqueando merge; atualizar e retestar</td></tr>
+<tr><td>Lib muda de endereço ou de API</td><td><code>go.podman.io/buildah</code>; Grype em v0.x; <code>x509roots/fallback</code> só tem pseudo-versão</td><td>Versões fixas; lib isolada em <code>internal/</code>; atualização via PR</td></tr>
+<tr><td>Falha não documentada</td><td>404 escondido num tipo privado</td><td>Sondas; testes contra mais de um registry</td></tr>
+<tr><td>Privilégio alto</td><td><code>SYS_ADMIN</code> + root no container</td><td>User namespace (<code>hostUsers: false</code>); namespace isolado; runners efêmeros</td></tr>
+<tr><td>Dockerfile malicioso</td><td>O forja executa o <code>RUN</code> de quem mandou o Dockerfile</td><td>Só repositórios confiáveis; rede de saída restrita no pod</td></tr>
+<tr><td>Diferença de ambiente</td><td>Docker Desktop sem AppArmor; Ubuntu com</td><td>Testar no runner e no nó reais antes de liberar</td></tr>
+<tr><td>Licenças</td><td>MPL-2.0; 1 dependência "Unknown"</td><td><code>go-licenses</code> no CI com lista permitida; conferência manual</td></tr>
+<tr><td>Supply chain</td><td>Tag de action ou de imagem reescrita</td><td>Actions por SHA; imagem do forja por digest e assinada</td></tr>
+<tr><td>Segredo em log</td><td>Token num <code>ENV</code> ou no histórico</td><td>Máscara testada (<code>TestInspectMasksSecrets</code>)</td></tr>
+<tr><td>Banco de CVEs</td><td>o Grype baixa o banco de <code>grype.anchore.io</code> em tempo de execução</td><td>Cache em volume (<code>/var/tmp/forja-db</code>); mirror interno; <code>--skip-cves</code> sem internet; falhar se o banco passar de 5 dias (padrão do Grype)</td></tr>
+<tr><td>Licença mal detectada</td><td><code>go-licenses</code> marcou GPL-2.0 numa dependência de licença dupla, e "Unknown" em três Apache-2.0</td><td>Relatório no CI + revisão humana registrada (cap. 12)</td></tr>
+<tr><td>Plataforma não suportada por uma lib</td><td>o Syft não escaneia no Windows nativo</td><td>Testar em cada plataforma que o CLI promete; recusar com mensagem clara</td></tr>
+<tr><td>Chave de assinatura</td><td>a chave privada do cosign assina tudo que o CI publica</td><td>Só em secret do repositório; cópia offline em cofre; rotacionar se vazar</td></tr>
+<tr><td>Imagens de teste acumulando</td><td>cada push publica <code>forja-e2e:sha-...</code> no GHCR</td><td>Política de retenção do pacote, ou limpeza periódica</td></tr>
+<tr><td>Emulador diferente do real</td><td>o floci repassa só um cabeçalho <code>Accept</code>; <code>exists</code> falha lá e funciona no registry real</td><td>Testar no emulador só o que ele emula fielmente; provar o resto num registry real (GHCR no CI)</td></tr>
+<tr><td>Credencial vazando para outro registry</td><td>o campo global de auth mandaria a senha do ECR ao Docker Hub</td><td>Arquivo de credenciais por host (cap. 19); teste <code>TestInstallAuthKeepsExistingCredentials</code></td></tr>
+<tr><td>Replicação assíncrona</td><td>deploy em outra região logo após o push pode não achar a imagem</td><td>Esperar a replicação antes do deploy (evolução prevista: <code>--wait-replication</code>)</td></tr>
+</tbody></table></div>
+<article>
+

@@ -12,17 +12,23 @@ import (
 )
 
 func newPushCmd(opts *options) *cobra.Command {
-	var immutable bool
-
+	var (
+		immutable bool
+		img       imageArg
+	)
 	cmd := &cobra.Command{
-		Use:     "push IMAGEM",
-		Short:   "Publica no registry uma imagem buildada antes (mesmo storage)",
-		Example: "  forja push registry.local/app:1.0 --immutable",
-		Args:    cobra.ExactArgs(1),
+		Use:   "push [IMAGEM]",
+		Short: "Publica no registry uma imagem buildada antes (mesmo storage)",
+		Example: `  forja push registry.local/app:1.0 --immutable
+  forja push --registry ecr --name ${{ github.repository }} --tag ${{ github.ref }}`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			image := args[0]
 			ctx, cancel := opts.ctx(cmd)
 			defer cancel()
+			image, err := opts.imageFromArgs(ctx, args, img)
+			if err != nil {
+				return err
+			}
 
 			if immutable {
 				_, err := opts.client.Digest(ctx, image)
@@ -47,6 +53,7 @@ func newPushCmd(opts *options) *cobra.Command {
 			return nil
 		},
 	}
+	img.register(cmd, true)
 	cmd.Flags().BoolVar(&immutable, "immutable", false, "falha (exit 2) se a tag já existir no registry")
 	return cmd
 }

@@ -1,0 +1,47 @@
+<!-- ============================================================ 06 -->
+<section class="chapter" id="c6">
+<div class="ch-num">CAPÍTULO 06</div>
+<h2>Cobra: a casca do CLI <span class="badge ok">testado</span></h2>
+<p>O Cobra organiza o CLI como uma árvore de <code>*cobra.Command</code>: a raiz <code>forja</code> e os filhos <code>build</code>, <code>push</code>, <code>manifest</code>, <code>exists</code>, <code>inspect</code> e <code>version</code>. Neste capítulo você escreve a casca. O motor de build entra no capítulo 9.</p>
+
+<h3>6.1 Os conceitos</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Campo / função</th><th>Para que serve</th></tr></thead>
+<tbody>
+<tr><td><code>Use</code>, <code>Short</code>, <code>Long</code>, <code>Example</code></td><td>Nome e textos do <code>--help</code>, montado pelo Cobra</td></tr>
+<tr><td><code>Args</code></td><td>Valida argumentos posicionais: <code>ExactArgs(1)</code>, <code>MaximumNArgs(1)</code>, <code>NoArgs</code></td></tr>
+<tr><td><code>RunE</code></td><td>A execução. Devolve <code>error</code>, que sobe até o <code>main</code></td></tr>
+<tr><td><code>Flags()</code> / <code>PersistentFlags()</code></td><td>Flags só do comando / herdadas pelos filhos</td></tr>
+<tr><td><code>MarkFlagRequired</code></td><td>Torna uma flag obrigatória (o <code>-t</code> do build)</td></tr>
+<tr><td><code>StringArrayVar</code></td><td>Flag repetível: <code>--build-arg A=1 --build-arg B=2</code></td></tr>
+<tr><td><code>PersistentPreRunE</code></td><td>Roda antes de qualquer subcomando: valida flags globais, cria clientes</td></tr>
+<tr><td><code>SilenceUsage</code> / <code>SilenceErrors</code></td><td>Não despeja o help a cada erro; o <code>main</code> imprime o erro uma vez</td></tr>
+<tr><td><code>OutOrStdout()</code> / <code>ErrOrStderr()</code></td><td>Resultado no stdout, logs no stderr; no teste, ambos viram buffer</td></tr>
+</tbody></table></div>
+<div class="callout"><span class="tag">Stdout para resultado, stderr para log</span><p>O build do buildah imprime dezenas de linhas. Elas vão para o stderr; no stdout sai só <code>BUILD OK ...</code> ou o JSON. Assim, <code>forja build -o json . &gt; resultado.json</code> gera um JSON limpo, que o CI consegue ler.</p></div>
+
+<h3>6.2 Dependências</h3>
+<div class="code"><button class="copy" type="button">Copiar</button><pre><code class="language-bash">go get github.com/spf13/cobra@v1.10.2
+go get go.podman.io/buildah@v1.45.1</code></pre></div>
+
+<h3>6.3 A raiz: flags globais, exit codes e injeção de dependências</h3>
+<p>O <code>Deps</code> reúne tudo que vem de fora: a fábrica do cliente de registry e o motor de build. O <code>main</code> passa as implementações reais; o teste passa fakes. Os exit codes são o contrato com o CI.</p>
+<div class="code"><div class="file"><span>internal/cli/root.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/root.go@@</code></pre></div>
+
+<h3>6.4 O cliente de registry</h3>
+<p>Único pacote que importa <code>containers/image</code> para consultas. Os comentários registram três descobertas feitas testando (cap. 8): o <code>OSChoice</code> fixo, o motivo de não usar <code>GetDigest</code> e os dois tipos de erro.</p>
+<div class="code"><div class="file"><span>internal/registry/registry.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/registry/registry.go@@</code></pre></div>
+
+<h3>6.5 <code>exists</code>: resposta, não erro</h3>
+<p>"Não existe" é uma resposta válida: vira exit 2. Rede ou autenticação falhando é erro de verdade: exit 1.</p>
+<div class="code"><div class="file"><span>internal/cli/exists.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/exists.go@@</code></pre></div>
+
+<h3>6.6 <code>inspect</code>: um mini-scan com máscara</h3>
+<p>Lê a configuração da imagem sem baixar as camadas e aponta variáveis sensíveis com valor fixo. A função <code>mask</code> garante que o segredo nunca aparece no log do CI.</p>
+<div class="code"><div class="file"><span>internal/cli/inspect.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/inspect.go@@</code></pre></div>
+
+<h3>6.7 <code>version</code>: sobrescrevendo o hook do pai</h3>
+<div class="code"><div class="file"><span>internal/cli/version.go</span><button class="copy" type="button">Copiar</button></div><pre><code class="language-go">@@arquivo internal/cli/version.go@@</code></pre></div>
+<p>Os comandos <code>build</code> e <code>push</code> também são casca, mas dependem do motor: estão no capítulo 9. O <code>manifest</code> está no capítulo 16.</p>
+</section>
+

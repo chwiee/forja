@@ -1,0 +1,23 @@
+Builda uma imagem a partir de um Dockerfile (CONTEXTO padrão: .)
+
+Usage:
+  forja build [CONTEXTO] [flags]
+
+Examples:
+  forja build -t registry.local/app:1.0 .
+  forja build -f docker/Dockerfile -t ghcr.io/org/app:1.0 --build-arg VERSION=1.0 --push .
+  forja build --platform linux/amd64,linux/arm64 -t ghcr.io/org/app:1.0 --push .
+
+Flags:
+      --build-arg stringArray   variável de build CHAVE=VALOR (pode repetir)
+  -f, --file string             caminho do Dockerfile (relativo ao contexto) (default "Dockerfile")
+  -h, --help                    help for build
+      --platform strings        plataformas, ex.: linux/amd64,linux/arm64 (gera um manifest list)
+      --push                    publica a imagem no registry depois do build (sem scan; prefira forja run)
+  -t, --tag string              nome da imagem: registry/repo:tag
+
+Global Flags:
+  -o, --output string           formato de saída: table|json (default "table")
+      --storage-driver string   driver de storage: vfs|overlay (env STORAGE_DRIVER) (default "vfs")
+      --timeout duration        tempo máximo do comando (default 30m0s)
+      --tls-verify              valida o certificado TLS do registry (default true)

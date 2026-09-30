@@ -1,0 +1,16 @@
+$ forja build --platform linux/amd64,linux/arm64 -t registry:5000/multi:1.0 --push --tls-verify=false .
+[linux/arm64] STEP 1/3: FROM alpine:3.20
+[linux/amd64] STEP 1/3: FROM alpine:3.20
+BUILD OK  registry:5000/multi:1.0  id=ec3436970bfb
+PUSH OK   registry:5000/multi:1.0  sha256:be135ac8d73c9c181f6adc0d2dafd3c477579cadf7bcdc9fbcd9a43671c4a802
+(9 s)
+
+$ docker buildx imagetools inspect localhost:5000/multi:1.0
+MediaType: application/vnd.oci.image.index.v1+json
+  Platform:  linux/arm64
+  Platform:  linux/amd64
+
+$ docker run --rm --platform linux/amd64 localhost:5000/multi:1.0
+rodando em x86_64 | buildado em x86_64 |  x86-64
+$ docker run --rm --platform linux/arm64 localhost:5000/multi:1.0
+rodando em aarch64 | buildado em aarch64 |  ARM aarch64

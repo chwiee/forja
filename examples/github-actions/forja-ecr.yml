@@ -1,0 +1,33 @@
+# Pipeline de uma aplicação publicando no ECR central (us-east-1) com o forja.
+# A replicação do ECR leva a imagem às demais regiões; o forja publica uma vez.
+# Credencial: OIDC do GitHub → role na conta central (sem chave estática).
+name: imagem-ecr
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  id-token: write          # OIDC para assumir a role na AWS
+jobs:
+  imagem:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/forja-push   # troque pela role real
+          aws-region: us-east-1
+      - name: forja run --registry ecr
+        env:
+          FORJA_ECR_ACCOUNT: "123456789012"   # conta central (troque pela real)
+        run: |
+          docker run --rm \
+            --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+            --cap-add FSETID --cap-add KILL --cap-add NET_BIND_SERVICE --cap-add SETFCAP \
+            --cap-add SETGID --cap-add SETPCAP --cap-add SETUID --cap-add SYS_CHROOT \
+            --security-opt apparmor=unconfined \
+            -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            -e FORJA_ECR_ACCOUNT \
+            -v "$PWD:/workspace" -v forja-tmp:/var/tmp \
+            ghcr.io/chwiee/forja:0.4.1 \
+            run --registry ecr --name "${{ github.repository }}" --tag "${{ github.ref }}" --immutable .
