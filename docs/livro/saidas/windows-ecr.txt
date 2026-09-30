@@ -1,0 +1,8 @@
+PS> . .\scripts\forja.ps1
+PS> $env:AWS_ENDPOINT_URL="http://forja-floci-teste:4566"   # só no teste com floci
+PS> $env:FORJA_ECR_ACCOUNT="000000000000"; $env:FORJA_NETWORK="forja-teste-net"
+PS> forja build --registry ecr --name org/app --tag refs/tags/v1.0.0 .
+credencial do ECR obtida para 000000000000.dkr.ecr.us-east-1.amazonaws.com
+STEP 1/7: FROM alpine:3.20
+...
+BUILD OK  000000000000.dkr.ecr.us-east-1.amazonaws.com/org/app:v1.0.0  id=d56c4e51a646
