@@ -33,7 +33,7 @@
 <tr><td><code>containers_image_openpgp</code></td><td>OpenPGP em Go puro no lugar da libgpgme (C). Obrigatória com cgo ligado</td></tr>
 <tr><td><code>exclude_graphdriver_btrfs</code></td><td>Remove o driver btrfs e a dependência dos headers dele</td></tr>
 <tr><td><code>_linux.go</code></td><td>O arquivo só entra no build Linux: é onde o buildah é importado</td></tr>
-<tr><td><code>//go:build !linux</code></td><td>O stub que faz o projeto compilar e testar no Windows</td></tr>
+<tr><td><code>//go:build linux</code></td><td>No <code>main.go</code>: o binário só compila para Linux (cap. 9.4)</td></tr>
 </tbody></table></div>
 <h3>7.5 A pegadinha do <code>GOOS</code> com ferramentas</h3>
 <p>Para auditar o código Linux estando no Windows, a primeira tentativa foi esta:</p>

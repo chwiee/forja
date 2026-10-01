@@ -11,15 +11,14 @@ git init
 mkdir cmd\forja, internal\cli, internal\build, internal\registry, deploy, scripts</code></pre></div></li>
 <li><b>Entenda cada pasta</b> antes de escrever código:
 <pre class="out"><code>forja/
-├── cmd/forja/main.go          ponto de entrada: só liga as peças
+├── cmd/forja/main.go          ponto de entrada (//go:build linux): só liga as peças
 ├── internal/cli/              comandos Cobra (a casca): build, push, manifest, scan, run...
 ├── internal/build/            único pacote que importa o buildah
 │   ├── build.go               tipos compartilhados (todas as plataformas)
 │   ├── build_linux.go         build, push, manifest e export (só Linux)
 │   ├── hostnet_linux.go       rede "de mentira" para o buildah (cap. 10)
 │   ├── defaults_linux.go      configuração embutida (cap. 13)
-│   ├── defaults/              policy.json e registries.conf embutidos
-│   └── build_other.go         stub para Windows/macOS
+│   └── defaults/              policy.json e registries.conf embutidos
 ├── internal/scan/             Syft, Grype, Gitleaks, política e nota (cap. 11)
 │   └── defaults/policy.yaml   política padrão embutida
 ├── internal/registry/         único pacote que fala com o registry

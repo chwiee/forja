@@ -6,7 +6,7 @@
 <div class="table-wrap"><table>
 <thead><tr><th>Nível</th><th>Comando</th><th>Pega</th><th>No forja</th></tr></thead>
 <tbody>
-<tr><td>1. Compila</td><td><code>go build ./... &amp;&amp; go vet ./...</code></td><td>API errada, tipos</td><td><span class="badge ok">Windows e Linux</span></td></tr>
+<tr><td>1. Compila</td><td><code>go build ./... &amp;&amp; go vet ./...</code></td><td>API errada, tipos</td><td><span class="badge ok">Linux (pacotes internos também no Windows)</span></td></tr>
 <tr><td>2. Unitário</td><td><code>go test ./...</code></td><td>A lógica do CLI e da nota, sem rede nem buildah</td><td><span class="badge ok">13 testes, 9 subcasos</span></td></tr>
 <tr><td>3. Sonda</td><td>programa em <code>probe/</code></td><td>Como a lib falha de verdade</td><td>achou o bug do 404</td></tr>
 <tr><td>4. Ambiente-alvo</td><td>imagem + lab + iscas + 5 imagens + 2 arquiteturas</td><td>cgo, libc, permissões, rede, disco, emulação</td><td>4 erros (cap. 10) e o limite do QEMU (cap. 16)</td></tr>

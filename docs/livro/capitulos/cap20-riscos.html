@@ -24,7 +24,7 @@
 <tr><td>Segredo em log</td><td>Token num <code>ENV</code> ou no histórico</td><td>Máscara testada (<code>TestInspectMasksSecrets</code>)</td></tr>
 <tr><td>Banco de CVEs</td><td>o Grype baixa o banco de <code>grype.anchore.io</code> em tempo de execução</td><td>Cache em volume (<code>/var/tmp/forja-db</code>); mirror interno; <code>--skip-cves</code> sem internet; falhar se o banco passar de 5 dias (padrão do Grype)</td></tr>
 <tr><td>Licença mal detectada</td><td><code>go-licenses</code> marcou GPL-2.0 numa dependência de licença dupla, e "Unknown" em três Apache-2.0</td><td>Relatório no CI + revisão humana registrada (cap. 12)</td></tr>
-<tr><td>Plataforma não suportada por uma lib</td><td>o Syft não escaneia no Windows nativo</td><td>Testar em cada plataforma que o CLI promete; recusar com mensagem clara</td></tr>
+<tr><td>Plataforma não suportada por uma lib</td><td>o Syft não escaneia no Windows nativo</td><td>Prometer só a plataforma que é testada: o forja é só Linux (cap. 9.4)</td></tr>
 <tr><td>Chave de assinatura</td><td>a chave privada do cosign assina tudo que o CI publica</td><td>Só em secret do repositório; cópia offline em cofre; rotacionar se vazar</td></tr>
 <tr><td>Imagens de teste acumulando</td><td>cada push publica <code>forja-e2e:sha-...</code> no GHCR</td><td>Limpeza semanal automática (<code>.github/workflows/limpeza.yml</code>): só apaga versões em que todas as tags começam com <code>e2e-</code> e têm mais de 7 dias (cap. 18)</td></tr>
 <tr><td>Emulador diferente do real</td><td>o floci repassa só um cabeçalho <code>Accept</code>; <code>exists</code> falha lá e funciona no registry real</td><td>Testar no emulador só o que ele emula fielmente; provar o resto num registry real (GHCR no CI)</td></tr>

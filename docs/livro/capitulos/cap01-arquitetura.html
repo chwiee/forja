@@ -8,7 +8,6 @@
 flowchart LR
   subgraph win["Seu Windows"]
     ps["PowerShell&lt;br/&gt;função forja"] --&gt; dd["Docker Desktop&lt;br/&gt;VM Linux"]
-    exe["forja.exe nativo&lt;br/&gt;exists / inspect"]
   end
   subgraph ci["CI"]
     gha["Runner GitHub&lt;br/&gt;docker run"]

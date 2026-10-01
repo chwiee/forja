@@ -43,7 +43,7 @@ No Windows (PowerShell): `. .\scripts\forja.ps1` e depois `forja run ...`.
 | `scan` | nota de segurança de uma imagem local ou `--remote` |
 | `push` | publica (`--immutable` recusa tag existente) |
 | `manifest` | junta imagens de arquiteturas diferentes num nome |
-| `exists`, `inspect` | consultas ao registry (funcionam no Windows nativo) |
+| `exists`, `inspect` | consultas ao registry |
 
 Todos aceitam `--registry NOME --name REPO --tag TAG` no lugar do endereço
 completo. `--tag` aceita `refs/tags/v1.2.0` (vira `v1.2.0`) e

@@ -15,7 +15,7 @@
 <tr><td>try/catch</td><td><code>if err != nil { return err }</code></td><td>todo o código</td></tr>
 <tr><td>instanceof da exceção</td><td><code>errors.Is</code> / <code>errors.As</code></td><td><code>errors.Is(err, registry.ErrNotFound)</code></td></tr>
 <tr><td>finally</td><td><code>defer</code></td><td><code>defer store.Shutdown(false)</code></td></tr>
-<tr><td>Código por plataforma</td><td>sufixo <code>_linux.go</code> / build tag</td><td><code>build_linux.go</code> e <code>build_other.go</code></td></tr>
+<tr><td>Código por plataforma</td><td>sufixo <code>_linux.go</code> / build tag</td><td><code>build_linux.go</code> e <code>//go:build linux</code> no <code>main.go</code></td></tr>
 <tr><td>Biblioteca</td><td>módulo (<code>go.mod</code>)</td><td><code>go.podman.io/buildah</code></td></tr>
 <tr><td>Timeout/cancelamento</td><td><code>context.Context</code></td><td><code>--timeout</code> vira contexto</td></tr>
 </tbody></table></div>

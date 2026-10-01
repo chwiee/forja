@@ -1,3 +1,7 @@
+//go:build linux
+
+// O forja só roda em Linux: o buildah precisa do kernel (namespaces, overlay,
+// chroot). Em outro sistema, o go build diz "build constraints exclude all Go files".
 package main
 
 import (

@@ -1,17 +1,14 @@
 // Package build isola o forja da biblioteca do buildah.
-// O código real fica em build_linux.go; em outros sistemas, build_other.go.
+// Aqui fica o contrato (tipos e Engine); o motor fica em build_linux.go.
+// O forja só roda em Linux (pods do runner), então não há versão para outros sistemas.
 package build
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 )
-
-// ErrUnsupported é devolvido fora do Linux: o buildah precisa do kernel Linux.
-var ErrUnsupported = errors.New("build e push só funcionam em Linux; no Windows ou macOS rode a imagem do forja com Docker (veja 'Rodando no Windows' no Manual da Forja)")
 
 // Options descreve um build.
 type Options struct {
